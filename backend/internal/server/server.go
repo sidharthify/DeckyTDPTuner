@@ -62,9 +62,12 @@ func (s *Server) floorLocked(w int) int {
 func (s *Server) govern(appid string, pr profiles.Profile) error {
 	// tuned value is the smooth one now, dont let it go under that
 	s.mu.Lock()
-	floor := s.floorWatts()
-	s.mu.Unlock()
-	return s.gov.Start(appid, pr.Target, pr.Watts, pr.Watts, floor)
+	defer s.mu.Unlock()
+	// unplugging starts it, and the tuner can finish after the watcher boosted
+	if s.boosted {
+		return nil
+	}
+	return s.gov.Start(appid, pr.Target, pr.Watts, pr.Watts, s.floorWatts())
 }
 
 func (s *Server) handle(req Request) (any, error) {
