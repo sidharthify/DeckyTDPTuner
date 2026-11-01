@@ -1,21 +1,30 @@
 package tdp
 
 import (
-	"github.com/sidharthify/DeckyTDPTuner/backend/internal/mangohud"
-
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/mangohud"
 )
 
 // pretend game that needs 9W for 60fps
-type fakeHw struct{ w int }
+// tuner sets it from its own goroutine
+type fakeHw struct {
+	mu sync.Mutex
+	w  int
+}
 
 func (f *fakeHw) Set(w int) error {
+	f.mu.Lock()
 	f.w = w
+	f.mu.Unlock()
 	return nil
 }
 
 func (f *fakeHw) Get() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.w
 }
 
@@ -25,8 +34,8 @@ func (f *fakeSrc) Skip() {
 }
 func (f *fakeSrc) Read() []mangohud.Sample {
 	fps := 60.0
-	if f.hw.w < 9 {
-		fps = float64(f.hw.w) * 6
+	if w := f.hw.Get(); w < 9 {
+		fps = float64(w) * 6
 	}
 	out := make([]mangohud.Sample, 10)
 	for i := range out {
@@ -56,12 +65,21 @@ func wait(tn *Tuner) Status {
 
 func TestSearch(t *testing.T) {
 	tn, hw := newFake()
-	got := 0
-	tn.Start("123", 60, func(w int) { got = w })
+	// done runs after the state flips to done, so wait on it separately
+	got := make(chan int, 1)
+	tn.Start("123", 60, func(w int) {
+		got <- w
+	})
 
 	s := wait(tn)
-	if s.State != "done" || s.Result != 10 || got != 10 || hw.w != 10 {
-		t.Fatalf("status %+v, got %d, hw %d", s, got, hw.w)
+	var w int
+	select {
+	case w = <-got:
+	case <-time.After(time.Second):
+		t.Fatal("done never called")
+	}
+	if s.State != "done" || s.Result != 10 || w != 10 || hw.Get() != 10 {
+		t.Fatalf("status %+v, got %d, hw %d", s, w, hw.Get())
 	}
 }
 
@@ -70,8 +88,8 @@ func TestUnreachable(t *testing.T) {
 	tn.Start("123", 90, nil)
 
 	s := wait(tn)
-	if s.State != "failed" || hw.w != 15 {
-		t.Fatalf("status %+v, hw %d", s, hw.w)
+	if s.State != "failed" || hw.Get() != 15 {
+		t.Fatalf("status %+v, hw %d", s, hw.Get())
 	}
 }
 
