@@ -172,9 +172,16 @@ func (s *Server) handle(req Request) (any, error) {
 		if req.On {
 			return pr, s.govern(req.AppID, pr)
 		}
+		gs := s.gov.Status()
 		s.gov.Stop()
-		if pr.Watts > 0 {
-			return pr, s.hw.Set(s.floorLocked(pr.Watts))
+		w := pr.Watts
+		// keep what live mode learned this session, it only raises its floor
+		// when going lower actually hurt
+		if gs.Running && gs.AppID == req.AppID && gs.Floor > w {
+			w = gs.Floor
+		}
+		if w > 0 {
+			return pr, s.hw.Set(s.floorLocked(w))
 		}
 		return pr, nil
 
