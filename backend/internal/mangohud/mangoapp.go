@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // steam owns the mangoapp config and rewrites it whenever the perf overlay
@@ -31,12 +32,21 @@ func mangoappConfig() string {
 		}
 	}
 
-	// fallback, steam puts it here anyway
+	// fallback, steam puts it here anyway. old sessions leave theirs behind
 	m, _ := filepath.Glob("/tmp/mangohud.*")
-	if len(m) > 0 {
-		return m[0]
+	best := ""
+	var bestTime time.Time
+	for _, f := range m {
+		st, err := os.Stat(f)
+		if err != nil {
+			continue
+		}
+		if st.ModTime().After(bestTime) {
+			best = f
+			bestTime = st.ModTime()
+		}
 	}
-	return ""
+	return best
 }
 
 func stripBlock(s string) string {
