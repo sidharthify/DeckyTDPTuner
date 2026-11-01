@@ -5,6 +5,7 @@ import (
 
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"sync"
@@ -169,6 +170,7 @@ func (t *Tuner) measure(ctx context.Context, watts, target int) (bool, float64, 
 	})
 
 	ok := avg >= float64(target)*(1-t.Tol) && low >= float64(target)*(1-t.LowTol)
+	log.Printf("tune: %dW avg %.1f low %.1f jitter %.2fms over %d frames, target %d, pass %v", watts, avg, low, jit, len(samples), target, ok)
 	return ok, jit, nil
 }
 
