@@ -7,6 +7,7 @@ import decky
 BIN = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", "tdptuner")
 SOCK = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "tdptuner.sock")
 PROFILES = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "profiles.json")
+SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 LOG = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "tdptuner.log")
 
 
@@ -19,7 +20,7 @@ class Plugin:
         decky.logger.info(f"starting {BIN}")
         log = open(LOG, "a")
         self.proc = await asyncio.create_subprocess_exec(
-            BIN, "-sock", SOCK, "-profiles", PROFILES,
+            BIN, "-sock", SOCK, "-profiles", PROFILES, "-settings", SETTINGS,
             stdout=log, stderr=log,
         )
         # give it a sec to make the socket
@@ -56,6 +57,9 @@ class Plugin:
 
     async def live(self, appid: str, target: int, on: bool):
         return await self._call("live", appid=str(appid), target=int(target), on=bool(on))
+
+    async def set_settings(self, settings: dict):
+        return await self._call("settings", settings=settings)
 
     async def reset(self):
         return await self._call("reset")
