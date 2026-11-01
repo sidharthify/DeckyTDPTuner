@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -53,6 +55,18 @@ func main() {
 		// csvs get big with log_interval=0
 		os.RemoveAll(*logDir)
 	}
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-sig
+		log.Printf("exiting, putting tdp back to %dW", hw.orig1/uw)
+		tn.Stop()
+		DisableLogging()
+		hw.Restore()
+		os.Remove(*sock)
+		os.Exit(0)
+	}()
 
 	srv := &Server{hw: hw, tuner: tn, profiles: LoadProfiles(*profPath)}
 	log.Fatal(srv.Serve(*sock))
