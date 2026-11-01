@@ -283,6 +283,9 @@ func (g *Governor) Start(appid string, target, start, base, min int) error {
 	g.st = GovStatus{Running: true, AppID: appid, Target: target}
 	g.mu.Unlock()
 	g.reset(time.Now(), start, base)
+	g.mu.Lock()
+	g.st.Watts, g.st.Floor = g.watts, g.floor
+	g.mu.Unlock()
 	g.src.Skip()
 	log.Printf("governor: %s at %d fps, starting at %dW, floor %dW", appid, target, g.watts, g.floor)
 
