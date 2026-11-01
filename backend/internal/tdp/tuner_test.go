@@ -86,7 +86,7 @@ func TestSearch(t *testing.T) {
 	tn, hw := newFake()
 	// done runs after the state flips to done, so wait on it separately
 	got := make(chan int, 1)
-	tn.Start("123", 60, func(w int) {
+	tn.Start("123", 60, 0, func(w int) {
 		got <- w
 	})
 
@@ -113,7 +113,7 @@ func TestSearchJagged(t *testing.T) {
 		}
 		return 0.5
 	})
-	tn.Start("123", 60, nil)
+	tn.Start("123", 60, 0, nil)
 
 	s := wait(tn)
 	if s.State != "done" || s.Result != 11 || hw.Get() != 11 {
@@ -123,7 +123,7 @@ func TestSearchJagged(t *testing.T) {
 
 func TestUnreachable(t *testing.T) {
 	tn, hw := newFake()
-	tn.Start("123", 90, nil)
+	tn.Start("123", 90, 0, nil)
 
 	s := wait(tn)
 	if s.State != "failed" || !s.Unreachable || s.Suggest != 60 || hw.Get() != 15 {

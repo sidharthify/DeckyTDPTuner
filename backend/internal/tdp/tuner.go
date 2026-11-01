@@ -249,8 +249,9 @@ func (t *Tuner) search(ctx context.Context, target int) (int, error) {
 	return res, nil
 }
 
-// Start kicks off a tune in the background, done gets the result if it worked
-func (t *Tuner) Start(appid string, target int, done func(watts int)) error {
+// Start kicks off a tune in the background, done gets the result if it worked.
+// min is the lowest watts it'll try, 0 keeps whatever it was
+func (t *Tuner) Start(appid string, target, min int, done func(watts int)) error {
 	t.mu.Lock()
 	if t.st.State == "tuning" {
 		t.mu.Unlock()
@@ -259,6 +260,9 @@ func (t *Tuner) Start(appid string, target int, done func(watts int)) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.cancel = cancel
 	t.st = Status{State: "tuning", AppID: appid, Target: target}
+	if min > 0 {
+		t.Min = min
+	}
 	t.mu.Unlock()
 
 	before := t.hw.Get()

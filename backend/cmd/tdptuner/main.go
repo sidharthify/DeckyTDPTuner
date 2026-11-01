@@ -19,7 +19,7 @@ import (
 func main() {
 	info := flag.Bool("info", false, "print detected hwmon and exit")
 	set := flag.Int("set", 0, "set tdp in watts and exit")
-	minW := flag.Int("min", 4, "lowest tdp the tuner and governor will use")
+	minW := flag.Int("min", 4, "default lowest tdp for tuning and live mode, the panel can change it")
 	maxW := flag.Int("max", 15, "highest tdp the tuner will try")
 	sock := flag.String("sock", "/tmp/tdptuner.sock", "socket for the plugin to talk to")
 	profPath := flag.String("profiles", "profiles.json", "where tuned values go")
@@ -34,9 +34,6 @@ func main() {
 	}
 
 	// dont go outside what the driver allows
-	if *minW > hw.Min {
-		hw.Min = *minW
-	}
 	if *maxW < hw.Max {
 		hw.Max = *maxW
 	}
@@ -79,6 +76,7 @@ func main() {
 	}
 
 	srv := server.New(hw, gp, tn, gov, profiles.Load(*profPath), *setPath)
+	srv.DefaultMin = *minW
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)

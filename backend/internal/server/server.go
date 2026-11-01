@@ -42,6 +42,9 @@ type Server struct {
 	pinned   bool // we're holding the gpu clock
 	rampGen  int
 	rampStep time.Duration // 0 means 500ms
+
+	// floor when the settings dont pick one
+	DefaultMin int
 }
 
 func New(hw *hwmon.Hwmon, g *gpu.GPU, tuner *tdp.Tuner, gov *tdp.Governor, profiles *profiles.Store, settingsPath string) *Server {
@@ -50,9 +53,18 @@ func New(hw *hwmon.Hwmon, g *gpu.GPU, tuner *tdp.Tuner, gov *tdp.Governor, profi
 	return s
 }
 
+func (s *Server) floorLocked(w int) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.atLeastFloor(w)
+}
+
 func (s *Server) govern(appid string, pr profiles.Profile) error {
 	// tuned value is the smooth one now, dont let it go under that
-	return s.gov.Start(appid, pr.Target, pr.Watts, pr.Watts)
+	s.mu.Lock()
+	floor := s.floorWatts()
+	s.mu.Unlock()
+	return s.gov.Start(appid, pr.Target, pr.Watts, pr.Watts, floor)
 }
 
 func (s *Server) handle(req Request) (any, error) {
@@ -69,6 +81,8 @@ func (s *Server) handle(req Request) (any, error) {
 			"gpu_cap":  s.gpuCap(s.chargerWatts()),
 
 			"gpu_full_watts": GPUFullWatts,
+			"floor":          s.floorWatts(),
+			"default_min":    s.DefaultMin,
 		}
 		s.mu.Unlock()
 		if s.gpu != nil {
@@ -94,7 +108,10 @@ func (s *Server) handle(req Request) (any, error) {
 		s.cancelRamp()
 		s.mu.Unlock()
 		s.gov.Stop()
-		err := s.tuner.Start(appid, target, func(watts int) {
+		s.mu.Lock()
+		floor := s.floorWatts()
+		s.mu.Unlock()
+		err := s.tuner.Start(appid, target, floor, func(watts int) {
 			if err := s.profiles.Set(appid, watts, target); err != nil {
 				log.Printf("saving profile for %s: %v", appid, err)
 			}
@@ -134,7 +151,7 @@ func (s *Server) handle(req Request) (any, error) {
 			return nil, nil
 		}
 		log.Printf("applying %dW for %s", pr.Watts, req.AppID)
-		return pr, s.hw.Set(pr.Watts)
+		return pr, s.hw.Set(s.floorLocked(pr.Watts))
 
 	case "live":
 		if req.AppID == "" || (req.On && req.Target <= 0) {
@@ -157,7 +174,7 @@ func (s *Server) handle(req Request) (any, error) {
 		}
 		s.gov.Stop()
 		if pr.Watts > 0 {
-			return pr, s.hw.Set(pr.Watts)
+			return pr, s.hw.Set(s.floorLocked(pr.Watts))
 		}
 		return pr, nil
 

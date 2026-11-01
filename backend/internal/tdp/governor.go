@@ -259,8 +259,12 @@ func (g *Governor) jitter() float64 {
 	return sum / float64(len(all)-1)
 }
 
-func (g *Governor) Start(appid string, target, start, base int) error {
+// min is the lowest it'll ever go, 0 keeps whatever it was
+func (g *Governor) Start(appid string, target, start, base, min int) error {
 	g.Stop()
+	if min > 0 {
+		g.Min = min
+	}
 
 	if g.Prep != nil {
 		if err := g.Prep(); err != nil {

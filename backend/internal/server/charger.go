@@ -16,6 +16,9 @@ type Settings struct {
 	Watts    int  `json:"watts"`
 	GPUClock int  `json:"gpu_clock"`
 	PinGPU   bool `json:"pin_gpu"`
+
+	// lowest tdp tuning and live mode will use, 0 means DefaultMin
+	MinWatts int `json:"min_watts"`
 }
 
 func (s *Server) loadSettings() {
@@ -51,10 +54,10 @@ func (s *Server) restoreGame() error {
 		if start < pr.Watts {
 			start = pr.Watts
 		}
-		return s.gov.Start(s.running, pr.Target, start, pr.Watts)
+		return s.gov.Start(s.running, pr.Target, start, pr.Watts, s.floorWatts())
 	}
 	if pr.Watts > 0 {
-		return s.rampTo(pr.Watts)
+		return s.rampTo(s.atLeastFloor(pr.Watts))
 	}
 	return s.hw.Restore()
 }
@@ -111,6 +114,28 @@ func (s *Server) gpuCap(watts int) int {
 		c = s.gpu.Min
 	}
 	return c
+}
+
+func (s *Server) floorWatts() int {
+	w := s.set.MinWatts
+	if w <= 0 {
+		w = s.DefaultMin
+	}
+	if w < s.hw.Min {
+		w = s.hw.Min
+	}
+	if w > s.hw.Max {
+		w = s.hw.Max
+	}
+	return w
+}
+
+// saved values from before the floor got raised shouldnt sneak under it
+func (s *Server) atLeastFloor(w int) int {
+	if f := s.floorWatts(); w < f {
+		return f
+	}
+	return w
 }
 
 func (s *Server) chargerWatts() int {
@@ -192,8 +217,8 @@ func (s *Server) SetSettings(patch json.RawMessage) error {
 	if err := json.Unmarshal(patch, &n); err != nil {
 		return err
 	}
-	if n.Watts < 0 || n.GPUClock < 0 {
-		return fmt.Errorf("watts and gpu_clock cant be negative")
+	if n.Watts < 0 || n.GPUClock < 0 || n.MinWatts < 0 {
+		return fmt.Errorf("watts, gpu_clock and min_watts cant be negative")
 	}
 
 	s.mu.Lock()
