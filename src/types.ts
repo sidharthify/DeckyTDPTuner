@@ -37,6 +37,7 @@ export type Settings = {
   watts: number;
   gpu_clock: number;
   pin_gpu: boolean;
+  min_watts: number;
 };
 
 export type Charger = {
@@ -48,6 +49,8 @@ export type Charger = {
   gpu_max: number;
   gpu_cap: number;
   gpu_full_watts: number;
+  floor: number;
+  default_min: number;
 };
 
 export type StatusData = {

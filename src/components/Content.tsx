@@ -2,6 +2,7 @@ import { Field, PanelSection, PanelSectionRow, Router } from "@decky/ui";
 import { useEffect, useState } from "react";
 import { getStatus } from "../backend";
 import { StatusData } from "../types";
+import { AdvancedSection } from "./AdvancedSection";
 import { ChargerSection } from "./ChargerSection";
 import { GameSection } from "./GameSection";
 import { TuneSection } from "./TuneSection";
@@ -52,6 +53,7 @@ export function Content() {
       <GameSection name={app?.display_name} data={data} />
       <TuneSection appid={appid} data={data} target={target} setTarget={setTarget} refresh={refresh} />
       {data?.charger && <ChargerSection data={data} />}
+      {data?.charger && <AdvancedSection data={data} />}
     </>
   );
 }
