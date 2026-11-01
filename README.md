@@ -64,13 +64,14 @@ Logs end up in `tdptuner.log` under the plugin's folder in `~/homebrew/logs/`. U
 
 ## License
 
-This project is licensed under the **BSD 3-Clause License**.
+This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
 
 Key points to be aware of:
 
-* You are free to use, modify, and distribute the software, in source or binary form.
+* You are free to use, modify, and distribute the software.
+* If you distribute it (or anything built from it), you have to make the source available under the same license.
 * You must keep the copyright notice and the license text when redistributing.
-* You can't use the name of the project or its contributors to promote anything derived from it without permission.
+* There is no warranty of any kind.
 
 For full details, please refer to the [LICENSE](./LICENSE) file.
 
