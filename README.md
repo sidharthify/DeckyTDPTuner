@@ -77,6 +77,8 @@ sudo ./tdptuner -set 8
 
 Logs end up in `tdptuner.log` under the plugin's folder in `~/homebrew/logs/`. Under `~/homebrew/settings/` there's `profiles.json` with the tuned values per game and `settings.json` with the charger and advanced settings (`full_power`, `watts`, `gpu_clock`, `pin_gpu` and `min_watts`, where 0 means the default), and you can edit both by hand if you want to. The default for the lowest TDP comes from the backend's `-min` flag, which is 4 unless you change it.
 
+If you want to change something and need to know where it lives, [docs/CODE.md](./docs/CODE.md) goes over what every file does and how the frontend, `main.py` and the Go backend talk to each other.
+
 ## License
 
 This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
