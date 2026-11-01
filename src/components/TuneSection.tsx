@@ -54,7 +54,7 @@ export function TuneSection({ appid, data, target, setTarget, refresh }: Props) 
         <SliderField
           label="Target FPS"
           description="Set Steam's framerate limit to the same value"
-          value={target}
+          value={tuning && st ? st.target : target}
           min={20}
           max={90}
           step={5}

@@ -7,12 +7,20 @@ import { ChargerSection } from "./ChargerSection";
 import { GameSection } from "./GameSection";
 import { TuneSection } from "./TuneSection";
 
+// decky unmounts the panel whenever the QAM closes, so the slider has to live
+// out here or it snaps back to 60 every time
+const targets = new Map<string, number>();
+
 export function Content() {
   const app = Router.MainRunningApp;
   const appid = app ? String(app.appid) : "";
 
   const [data, setData] = useState<StatusData>();
-  const [target, setTarget] = useState(60);
+  const [target, setTargetState] = useState(() => targets.get(appid) ?? 60);
+  const setTarget = (t: number) => {
+    targets.set(appid, t);
+    setTargetState(t);
+  };
   const [err, setErr] = useState("");
 
   const refresh = async () => {
@@ -31,10 +39,10 @@ export function Content() {
     return () => clearInterval(t);
   }, [appid]);
 
-  // start the slider at whatever we tuned for last time
+  // start the slider at whatever we tuned for last time, unless it got moved
   useEffect(() => {
-    if (data?.profile) {
-      setTarget(data.profile.target);
+    if (data?.profile && !targets.has(appid)) {
+      setTargetState(data.profile.target);
     }
   }, [data?.profile?.target]);
 
