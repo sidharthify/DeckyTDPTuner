@@ -5,6 +5,7 @@ import {
   PanelSectionRow,
   Router,
   SliderField,
+  ToggleField,
   staticClasses,
 } from "@decky/ui";
 import { callable, definePlugin, toaster } from "@decky/api";
@@ -26,9 +27,28 @@ type Status = {
   message: string;
 };
 
-type Profile = { watts: number; target: number; tuned: number };
+type Profile = { watts: number; target: number; tuned: number; live: boolean };
 
-type StatusData = { status: Status; min: number; max: number; profile?: Profile };
+type GovStatus = {
+  running: boolean;
+  appid: string;
+  target: number;
+  watts: number;
+  floor: number;
+  fps: number;
+  gpu: number;
+  raises: number;
+  drops: number;
+  message: string;
+};
+
+type StatusData = {
+  status: Status;
+  governor: GovStatus;
+  min: number;
+  max: number;
+  profile?: Profile;
+};
 
 const getStatus = callable<[appid: string], Resp<StatusData>>("status");
 const tune = callable<[appid: string, target: number], Resp<null>>("tune");
@@ -36,6 +56,7 @@ const stop = callable<[], Resp<null>>("stop");
 const forget = callable<[appid: string], Resp<null>>("forget");
 const apply = callable<[appid: string], Resp<Profile | null>>("apply");
 const reset = callable<[], Resp<null>>("reset");
+const live = callable<[appid: string, target: number, on: boolean], Resp<Profile>>("live");
 
 function Content() {
   const app = Router.MainRunningApp;
@@ -73,6 +94,17 @@ function Content() {
 
   const onTune = async () => {
     const r = tuning ? await stop() : await tune(appid, target);
+    if (!r.ok) {
+      toaster.toast({ title: "TDP Tuner", body: r.error ?? "failed" });
+    }
+    refresh();
+  };
+
+  const gov = data?.governor;
+  const govHere = gov?.running && gov.appid == appid;
+
+  const onLive = async (on: boolean) => {
+    const r = await live(appid, target, on);
     if (!r.ok) {
       toaster.toast({ title: "TDP Tuner", body: r.error ?? "failed" });
     }
@@ -123,6 +155,23 @@ function Content() {
             onChange={setTarget}
           />
         </PanelSectionRow>
+        <PanelSectionRow>
+          <ToggleField
+            label="Adjust live"
+            description="Keep raising and lowering TDP while you play, starting from the tuned value"
+            checked={!!data?.profile?.live}
+            disabled={!app}
+            onChange={onLive}
+          />
+        </PanelSectionRow>
+        {govHere && (
+          <PanelSectionRow>
+            <Field
+              label={gov.message || `${gov.watts}W, floor ${gov.floor}W`}
+              description={`${gov.fps.toFixed(1)} fps${gov.gpu >= 0 ? `, gpu ${gov.gpu.toFixed(0)}%` : ""}, ${gov.raises} up / ${gov.drops} down`}
+            />
+          </PanelSectionRow>
+        )}
         <PanelSectionRow>
           <ButtonItem layout="below" disabled={!app} onClick={onTune}>
             {tuning ? "Stop" : "Find lowest TDP"}
