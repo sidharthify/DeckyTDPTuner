@@ -156,3 +156,33 @@ func TestForgetRestores(t *testing.T) {
 		t.Fatalf("forget left it at %dW", hw.Get())
 	}
 }
+
+func TestFloorChangeApplies(t *testing.T) {
+	hw := fakeHw(t, 15)
+	gov := tdp.NewGovernor(hw, noFrames{}, 4, 15)
+	pr := profiles.Load(filepath.Join(t.TempDir(), "profiles.json"))
+	pr.Set("123", 5, 60)
+
+	s := &Server{hw: hw, gov: gov, profiles: pr, tuner: tdp.NewTuner(hw, noFrames{}, 4, 15)}
+	s.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	s.DefaultMin = 4
+
+	s.handle(Request{Cmd: "apply", AppID: "123"})
+	if err := s.SetSettings([]byte(`{"min_watts": 7}`)); err != nil {
+		t.Fatal(err)
+	}
+	if hw.Get() != 7 {
+		t.Fatalf("fixed watts stayed at %dW under the new 7W floor", hw.Get())
+	}
+
+	if _, err := s.handle(Request{Cmd: "live", AppID: "123", Target: 60, On: true}); err != nil {
+		t.Fatal(err)
+	}
+	defer gov.Stop()
+	if err := s.SetSettings([]byte(`{"min_watts": 9}`)); err != nil {
+		t.Fatal(err)
+	}
+	if f := gov.Status().Floor; f != 9 || hw.Get() < 9 {
+		t.Fatalf("governor floor %dW at %dW, wanted 9W", f, hw.Get())
+	}
+}

@@ -207,11 +207,30 @@ func (s *Server) checkCharger() {
 	}
 }
 
+// puts a changed floor into effect for the running game. caller holds s.mu
+func (s *Server) applyFloor() error {
+	if s.boosted || s.tuning() {
+		return nil
+	}
+	gs := s.gov.Status()
+	if gs.Running {
+		pr, _ := s.profiles.Get(gs.AppID)
+		return s.gov.Start(gs.AppID, gs.Target, gs.Watts, pr.Watts, s.floorWatts())
+	}
+	pr, ok := s.profiles.Get(s.running)
+	if s.running == "" || !ok || pr.Live || pr.Watts == 0 {
+		return nil
+	}
+	s.cancelRamp()
+	return s.hw.Set(s.atLeastFloor(pr.Watts))
+}
+
 // SetSettings merges whatever fields are in patch into the saved settings, so
 // two parts of the panel cant overwrite each other with stale values. applies
 // straight away if plugged in
 func (s *Server) SetSettings(patch json.RawMessage) error {
 	s.mu.Lock()
+	oldFloor := s.floorWatts()
 	n := s.set
 	if err := json.Unmarshal(patch, &n); err != nil {
 		s.mu.Unlock()
@@ -224,6 +243,11 @@ func (s *Server) SetSettings(patch json.RawMessage) error {
 
 	s.set = n
 	err := s.saveSettings()
+	if s.floorWatts() != oldFloor {
+		if ferr := s.applyFloor(); ferr != nil {
+			log.Printf("applying new floor: %v", ferr)
+		}
+	}
 	if s.boosted && s.set.FullPower {
 		s.boost()
 	}
