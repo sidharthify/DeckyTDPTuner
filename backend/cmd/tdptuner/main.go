@@ -19,7 +19,7 @@ import (
 func main() {
 	info := flag.Bool("info", false, "print detected hwmon and exit")
 	set := flag.Int("set", 0, "set tdp in watts and exit")
-	minW := flag.Int("min", 3, "lowest tdp the tuner will try")
+	minW := flag.Int("min", 4, "lowest tdp the tuner and governor will use")
 	maxW := flag.Int("max", 15, "highest tdp the tuner will try")
 	sock := flag.String("sock", "/tmp/tdptuner.sock", "socket for the plugin to talk to")
 	profPath := flag.String("profiles", "profiles.json", "where tuned values go")
