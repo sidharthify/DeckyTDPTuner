@@ -182,8 +182,16 @@ func (s *Server) checkCharger() {
 	}
 }
 
-// SetSettings saves new charger prefs and applies them straight away if plugged in
-func (s *Server) SetSettings(n Settings) error {
+// SetSettings merges whatever fields are in patch into the saved settings, so
+// two parts of the panel cant overwrite each other with stale values. applies
+// straight away if plugged in
+func (s *Server) SetSettings(patch json.RawMessage) error {
+	s.mu.Lock()
+	n := s.set
+	s.mu.Unlock()
+	if err := json.Unmarshal(patch, &n); err != nil {
+		return err
+	}
 	if n.Watts < 0 || n.GPUClock < 0 {
 		return fmt.Errorf("watts and gpu_clock cant be negative")
 	}

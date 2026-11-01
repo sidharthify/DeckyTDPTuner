@@ -69,3 +69,19 @@ func TestRampCancel(t *testing.T) {
 		t.Fatalf("kept going after cancel, %dW -> %dW", stopped, hw.Get())
 	}
 }
+
+func TestSettingsPatch(t *testing.T) {
+	s := &Server{hw: fakeHw(t, 10), settingsPath: filepath.Join(t.TempDir(), "settings.json")}
+	s.set = Settings{FullPower: true, Watts: 12, PinGPU: true}
+
+	if err := s.SetSettings([]byte(`{"gpu_clock": 1200}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !s.set.FullPower || s.set.Watts != 12 || s.set.GPUClock != 1200 || !s.set.PinGPU {
+		t.Fatalf("patch clobbered other fields: %+v", s.set)
+	}
+
+	if err := s.SetSettings([]byte(`{"watts": -1}`)); err == nil || s.set.Watts != 12 {
+		t.Fatalf("negative watts went through: %+v", s.set)
+	}
+}

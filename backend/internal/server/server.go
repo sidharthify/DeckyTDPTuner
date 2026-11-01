@@ -22,7 +22,7 @@ type Request struct {
 	Target int    `json:"target"`
 	On     bool   `json:"on"`
 
-	Settings *Settings `json:"settings"`
+	Settings json.RawMessage `json:"settings"`
 }
 
 type Server struct {
@@ -178,10 +178,10 @@ func (s *Server) handle(req Request) (any, error) {
 		return nil, s.hw.Restore()
 
 	case "settings":
-		if req.Settings == nil {
+		if len(req.Settings) == 0 {
 			return nil, fmt.Errorf("need settings")
 		}
-		return nil, s.SetSettings(*req.Settings)
+		return nil, s.SetSettings(req.Settings)
 
 	case "forget":
 		if s.gov.Status().AppID == req.AppID {
