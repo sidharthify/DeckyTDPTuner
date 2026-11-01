@@ -34,6 +34,8 @@ const getStatus = callable<[appid: string], Resp<StatusData>>("status");
 const tune = callable<[appid: string, target: number], Resp<null>>("tune");
 const stop = callable<[], Resp<null>>("stop");
 const forget = callable<[appid: string], Resp<null>>("forget");
+const apply = callable<[appid: string], Resp<Profile | null>>("apply");
+const reset = callable<[], Resp<null>>("reset");
 
 function Content() {
   const app = Router.MainRunningApp;
@@ -151,10 +153,27 @@ function Content() {
 }
 
 export default definePlugin(() => {
+  const lifetime = SteamClient.GameSessions.RegisterForAppLifetimeNotifications(async (n) => {
+    const appid = String(n.unAppID);
+    if (!n.bRunning) {
+      await stop();
+      await reset();
+      return;
+    }
+
+    const r = await apply(appid);
+    if (r.ok && r.data) {
+      toaster.toast({ title: "TDP Tuner", body: `Set ${r.data.watts}W (tuned for ${r.data.target} fps)` });
+    }
+  });
+
   return {
     name: "TDP Tuner",
     titleView: <div className={staticClasses.Title}>TDP Tuner</div>,
     content: <Content />,
     icon: <FaBolt />,
+    onDismount() {
+      lifetime.unregister();
+    },
   };
 });
