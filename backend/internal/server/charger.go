@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -11,9 +12,14 @@ import (
 
 type Settings struct {
 	FullPower bool `json:"full_power"`
+	// 0 means max for both
+	Watts    int  `json:"watts"`
+	GPUClock int  `json:"gpu_clock"`
+	PinGPU   bool `json:"pin_gpu"`
 }
 
 func (s *Server) loadSettings() {
+	s.set = Settings{PinGPU: true}
 	b, err := os.ReadFile(s.settingsPath)
 	if err == nil {
 		json.Unmarshal(b, &s.set)
@@ -47,27 +53,42 @@ func (s *Server) restoreGame() error {
 	return s.hw.Restore()
 }
 
-// caller holds s.mu
+func (s *Server) chargerWatts() int {
+	if s.set.Watts <= 0 {
+		return s.hw.Max
+	}
+	return s.set.Watts
+}
+
+// caller holds s.mu, also used to re-apply when settings change while plugged in
 func (s *Server) boost() {
 	s.gov.Stop()
-	if err := s.hw.Set(s.hw.Max); err != nil {
-		log.Printf("charger: set %dW: %v", s.hw.Max, err)
+	w := s.chargerWatts()
+	if err := s.hw.Set(w); err != nil {
+		log.Printf("charger: set %dW: %v", w, err)
 	}
-	if s.gpu != nil {
-		if err := s.gpu.Pin(0); err != nil {
+
+	if s.gpu != nil && s.set.PinGPU {
+		if err := s.gpu.Pin(s.set.GPUClock); err != nil {
 			log.Printf("charger: pin gpu: %v", err)
+		} else {
+			s.pinned = true
 		}
+	} else if s.pinned {
+		s.gpu.Unpin()
+		s.pinned = false
 	}
 	s.boosted = true
-	log.Printf("charger: plugged in, %dW and gpu pinned", s.hw.Max)
+	log.Printf("charger: plugged in, %dW, gpu pinned: %v", w, s.pinned)
 }
 
 // caller holds s.mu
 func (s *Server) unboost() {
-	if s.gpu != nil {
+	if s.pinned {
 		if err := s.gpu.Unpin(); err != nil {
 			log.Printf("charger: unpin gpu: %v", err)
 		}
+		s.pinned = false
 	}
 	s.boosted = false
 	log.Printf("charger: back to normal")
@@ -95,6 +116,24 @@ func (s *Server) checkCharger() {
 	}
 }
 
+// SetSettings saves new charger prefs and applies them straight away if plugged in
+func (s *Server) SetSettings(n Settings) error {
+	if n.Watts < 0 || n.GPUClock < 0 {
+		return fmt.Errorf("watts and gpu_clock cant be negative")
+	}
+
+	s.mu.Lock()
+	s.set = n
+	err := s.saveSettings()
+	if s.boosted && s.set.FullPower {
+		s.boost()
+	}
+	s.mu.Unlock()
+
+	s.checkCharger()
+	return err
+}
+
 func (s *Server) WatchCharger() {
 	for {
 		s.checkCharger()
@@ -106,7 +145,7 @@ func (s *Server) WatchCharger() {
 func (s *Server) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.boosted && s.gpu != nil {
+	if s.pinned {
 		s.gpu.Unpin()
 	}
 }

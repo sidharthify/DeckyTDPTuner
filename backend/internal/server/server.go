@@ -20,6 +20,8 @@ type Request struct {
 	AppID  string `json:"appid"`
 	Target int    `json:"target"`
 	On     bool   `json:"on"`
+
+	Settings *Settings `json:"settings"`
 }
 
 type Server struct {
@@ -36,6 +38,7 @@ type Server struct {
 	running string // appid of the game thats up, if any
 	ac      bool
 	boosted bool // full power on charger is applied right now
+	pinned  bool // we're holding the gpu clock
 }
 
 func New(hw *hwmon.Hwmon, g *gpu.GPU, tuner *tdp.Tuner, gov *tdp.Governor, profiles *profiles.Store, settingsPath string) *Server {
@@ -54,9 +57,17 @@ func (s *Server) handle(req Request) (any, error) {
 	switch req.Cmd {
 	case "status":
 		s.mu.Lock()
-		charger := map[string]any{"ac": s.ac, "full_power": s.set.FullPower, "boosted": s.boosted, "gpu_max": 0}
+		charger := map[string]any{
+			"ac":       s.ac,
+			"boosted":  s.boosted,
+			"settings": s.set,
+			"watts":    s.chargerWatts(),
+			"gpu_min":  0,
+			"gpu_max":  0,
+		}
 		s.mu.Unlock()
 		if s.gpu != nil {
+			charger["gpu_min"] = s.gpu.Min
 			charger["gpu_max"] = s.gpu.Max
 		}
 		out := map[string]any{"status": s.tuner.Status(), "governor": s.gov.Status(), "min": s.hw.Min, "max": s.hw.Max, "charger": charger}
@@ -157,13 +168,11 @@ func (s *Server) handle(req Request) (any, error) {
 		}
 		return nil, s.hw.Restore()
 
-	case "fullpower":
-		s.mu.Lock()
-		s.set.FullPower = req.On
-		err := s.saveSettings()
-		s.mu.Unlock()
-		s.checkCharger()
-		return nil, err
+	case "settings":
+		if req.Settings == nil {
+			return nil, fmt.Errorf("need settings")
+		}
+		return nil, s.SetSettings(*req.Settings)
 
 	case "forget":
 		if s.gov.Status().AppID == req.AppID {

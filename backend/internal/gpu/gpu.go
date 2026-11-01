@@ -63,6 +63,9 @@ func (g *GPU) Pin(mhz int) error {
 	if mhz <= 0 || mhz > g.Max {
 		mhz = g.Max
 	}
+	if mhz < g.Min {
+		mhz = g.Min
+	}
 	if err := g.write("power_dpm_force_performance_level", "manual"); err != nil {
 		return err
 	}
