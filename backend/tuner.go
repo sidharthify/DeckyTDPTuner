@@ -202,10 +202,11 @@ func (t *Tuner) Start(appid string, target int, done func(watts int)) error {
 
 	go func() {
 		defer cancel()
-		if t.cleanup != nil {
-			defer t.cleanup()
-		}
 		res, err := t.search(ctx, target)
+		// before done, which might hand logging over to the governor
+		if t.cleanup != nil {
+			t.cleanup()
+		}
 
 		if err != nil {
 			t.hw.Set(before)

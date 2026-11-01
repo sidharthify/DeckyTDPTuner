@@ -56,18 +56,27 @@ func main() {
 		os.RemoveAll(*logDir)
 	}
 
+	gl := NewLogTail(*logDir)
+	gov := NewGovernor(hw, gl, hw.Min, hw.Max)
+	gov.prep = func() error {
+		return EnableLogging(*logDir, 100)
+	}
+	gov.prune = gl.Prune
+	gov.cleanup = tn.cleanup
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sig
 		log.Printf("exiting, putting tdp back to %dW", hw.orig1/uw)
 		tn.Stop()
+		gov.Stop()
 		DisableLogging()
 		hw.Restore()
 		os.Remove(*sock)
 		os.Exit(0)
 	}()
 
-	srv := &Server{hw: hw, tuner: tn, profiles: LoadProfiles(*profPath)}
+	srv := &Server{hw: hw, tuner: tn, gov: gov, profiles: LoadProfiles(*profPath)}
 	log.Fatal(srv.Serve(*sock))
 }

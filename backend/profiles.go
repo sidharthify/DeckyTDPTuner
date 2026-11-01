@@ -12,6 +12,7 @@ type Profile struct {
 	Watts  int   `json:"watts"`
 	Target int   `json:"target"`
 	Tuned  int64 `json:"tuned"`
+	Live   bool  `json:"live"`
 }
 
 type Profiles struct {
@@ -54,8 +55,21 @@ func (p *Profiles) Get(appid string) (Profile, bool) {
 func (p *Profiles) Set(appid string, watts, target int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.m[appid] = Profile{Watts: watts, Target: target, Tuned: time.Now().Unix()}
+	live := p.m[appid].Live
+	p.m[appid] = Profile{Watts: watts, Target: target, Tuned: time.Now().Unix(), Live: live}
 	return p.save()
+}
+
+func (p *Profiles) SetLive(appid string, live bool, target int) (Profile, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	pr := p.m[appid]
+	pr.Live = live
+	if live {
+		pr.Target = target
+	}
+	p.m[appid] = pr
+	return pr, p.save()
 }
 
 func (p *Profiles) Delete(appid string) error {
