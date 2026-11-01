@@ -100,18 +100,16 @@ func (s *Server) handle(req Request) (any, error) {
 			return nil, fmt.Errorf("need appid and target")
 		}
 		appid, target := req.AppID, req.Target
+		// held until the tuner is up or the charger watcher can boost in between
 		s.mu.Lock()
+		defer s.mu.Unlock()
 		if s.boosted {
 			// dont tune with the gpu pinned, the watcher puts it back after
 			s.unboost()
 		}
 		s.cancelRamp()
-		s.mu.Unlock()
 		s.gov.Stop()
-		s.mu.Lock()
-		floor := s.floorWatts()
-		s.mu.Unlock()
-		err := s.tuner.Start(appid, target, floor, func(watts int) {
+		err := s.tuner.Start(appid, target, s.floorWatts(), func(watts int) {
 			if err := s.profiles.Set(appid, watts, target); err != nil {
 				log.Printf("saving profile for %s: %v", appid, err)
 			}
