@@ -12,6 +12,7 @@ import (
 type Sample struct {
 	FPS       float64
 	Frametime float64 // ms
+	GPULoad   float64 // percent, -1 if the log doesnt have it
 }
 
 // LogTail follows the newest mangohud csv in a folder
@@ -23,10 +24,11 @@ type LogTail struct {
 	partial string
 	fpsCol  int
 	ftCol   int
+	gpuCol  int
 }
 
 func NewLogTail(dir string) *LogTail {
-	return &LogTail{dir: dir, fpsCol: -1, ftCol: -1}
+	return &LogTail{dir: dir, fpsCol: -1, ftCol: -1, gpuCol: -1}
 }
 
 func (t *LogTail) newest() string {
@@ -60,7 +62,7 @@ func (t *LogTail) Read() []Sample {
 		t.file = f
 		t.off = 0
 		t.partial = ""
-		t.fpsCol, t.ftCol = -1, -1
+		t.fpsCol, t.ftCol, t.gpuCol = -1, -1, -1
 	}
 
 	fd, err := os.Open(f)
@@ -97,13 +99,15 @@ func (t *LogTail) parse(chunk string) []Sample {
 		cols := strings.Split(l, ",")
 
 		if cols[0] == "fps" {
-			t.fpsCol, t.ftCol = -1, -1
+			t.fpsCol, t.ftCol, t.gpuCol = -1, -1, -1
 			for i, c := range cols {
 				switch c {
 				case "fps":
 					t.fpsCol = i
 				case "frametime":
 					t.ftCol = i
+				case "gpu_load":
+					t.gpuCol = i
 				}
 			}
 			continue
@@ -117,7 +121,13 @@ func (t *LogTail) parse(chunk string) []Sample {
 		if err1 != nil || err2 != nil || ft <= 0 {
 			continue
 		}
-		out = append(out, Sample{FPS: fps, Frametime: ft})
+		gpu := -1.0
+		if t.gpuCol >= 0 && len(cols) > t.gpuCol {
+			if v, err := strconv.ParseFloat(cols[t.gpuCol], 64); err == nil {
+				gpu = v
+			}
+		}
+		out = append(out, Sample{FPS: fps, Frametime: ft, GPULoad: gpu})
 	}
 	return out
 }

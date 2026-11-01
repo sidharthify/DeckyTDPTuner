@@ -20,7 +20,7 @@ func TestLogTail(t *testing.T) {
 
 	lt := NewLogTail(dir)
 	s := lt.Read()
-	if len(s) != 1 || s[0].FPS != 59.9 || s[0].Frametime != 16.7 {
+	if len(s) != 1 || s[0].FPS != 59.9 || s[0].Frametime != 16.7 || s[0].GPULoad != 80 {
 		t.Fatalf("got %+v", s)
 	}
 
