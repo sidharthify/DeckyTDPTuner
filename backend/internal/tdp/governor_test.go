@@ -117,3 +117,20 @@ func TestGovBlamesDrop(t *testing.T) {
 		t.Fatalf("floor didnt decay, %d", g.floor)
 	}
 }
+
+func TestGovMaxed(t *testing.T) {
+	g, _, now := newGov(15, 3)
+
+	tick(g, &now, 50, 99)
+	tick(g, &now, 50, 99)
+	if !g.Status().Maxed {
+		t.Fatal("should say max isnt enough")
+	}
+
+	for i := 0; i < 4; i++ {
+		tick(g, &now, 60, 99)
+	}
+	if g.Status().Maxed {
+		t.Fatal("still maxed after recovering")
+	}
+}

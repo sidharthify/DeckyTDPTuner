@@ -22,7 +22,9 @@ type GovStatus struct {
 	GPU     float64 `json:"gpu"`
 	Raises  int     `json:"raises"`
 	Drops   int     `json:"drops"`
-	Message string  `json:"message"`
+	// at max and still under target
+	Maxed   bool   `json:"maxed"`
+	Message string `json:"message"`
 }
 
 type Governor struct {
@@ -158,6 +160,9 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 	// one bad tick is a blip, has to be low over the window and still low now
 	lim := float64(target) * g.MissTol
 	miss := len(g.hist) >= 2 && win < lim && fps < lim
+	g.mu.Lock()
+	g.st.Maxed = miss && g.watts >= g.Max
+	g.mu.Unlock()
 	if miss {
 		g.lastMiss = now
 
