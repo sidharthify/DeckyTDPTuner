@@ -8,11 +8,14 @@ This repository contains a [Decky Loader](https://github.com/SteamDeckHomebrew/d
 
 Pick a target framerate in the Quick Access Menu, press "Find lowest TDP" and leave the game running somewhere that's roughly as heavy as the rest of it (a busy town, not a loading screen). The plugin starts at 15W, checks that the game can actually hold the target there, and then binary searches down until it finds the lowest wattage that still keeps the average and the 5% lows above the target. Each step settles for 5 seconds and samples for 10, so a full run takes about a minute. The result plus 1W of headroom gets saved for that game and is applied automatically every time you launch it.
 
+If you turn on **Adjust live**, the plugin doesn't just set the tuned value and walk away. It keeps watching frametimes for the whole session and raises the TDP the moment frames start missing (+2W, or straight to the max if the framerate falls off a cliff), but only lowers it 1W at a time after 15 seconds of stable frames with the GPU under 85% busy. If a drop causes a miss within 5 seconds, the TDP it dropped from becomes the new floor for a while (it decays back down after 2 minutes without misses), so it doesn't keep poking at the same edge. Changing the power cap doesn't cause a hitch by itself since it's just a ceiling the SMU enforces, the only thing that can stutter is the cap being too low when the load spikes, which is what the fast raise is for. GPU clocks are never touched.
+
 Things to keep in mind:
 - Set Steam's **framerate limit** to the same value as the target. The whole point is that the game is capped and the APU is just burning power past what it needs, so without a limit it'll happily use all 15W to render frames you'll never see.
 - Leave Steam's own **TDP limit** slider off, otherwise Steam and the plugin will keep overwriting each other.
 - Frametimes come from mangoapp (the thing behind the performance overlay), the plugin turns on its CSV logging while tuning and turns it off again afterwards. The overlay itself doesn't need to be visible.
-- The search only looks at whatever you're doing during that minute, so if the game gets heavier later (bosses, big fights, etc) you might want to tune again there or bump the result up yourself.
+- Without live mode, the search only looks at whatever you're doing during that minute, so if the game gets heavier later (bosses, big fights, etc) the saved value might not be enough. Live mode is there for exactly that.
+- Live mode keeps mangoapp logging (every 100ms) for as long as the game runs. The CSV lives in `/tmp`, which is RAM on SteamOS, and grows by roughly 3MB an hour.
 - It's only been written with the Steam Deck in mind (LCD and OLED), other handhelds running SteamOS *might* work if their amdgpu hwmon exposes `power1_cap`.
 
 ## Building
