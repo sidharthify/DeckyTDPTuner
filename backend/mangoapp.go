@@ -56,7 +56,8 @@ func stripBlock(s string) string {
 	return strings.Join(out, "\n")
 }
 
-func EnableLogging(dir string) error {
+// interval is in ms, 0 logs every frame
+func EnableLogging(dir string, interval int) error {
 	cfg := mangoappConfig()
 	if cfg == "" {
 		return fmt.Errorf("mangoapp config not found, is gamescope running?")
@@ -72,12 +73,14 @@ func EnableLogging(dir string) error {
 	if err != nil {
 		return err
 	}
-	if strings.Contains(string(b), marker) {
+	block := fmt.Sprintf("%s\noutput_folder=%s\nautostart_log=1\nlog_interval=%d\n", marker, dir, interval)
+	if strings.Contains(string(b), block) {
 		return nil
 	}
 
-	s := strings.TrimRight(string(b), "\n")
-	s += fmt.Sprintf("\n%s\noutput_folder=%s\nautostart_log=1\nlog_interval=0\n", marker, dir)
+	// might be there with a different interval
+	s := strings.TrimRight(stripBlock(string(b)), "\n")
+	s += "\n" + block
 	return os.WriteFile(cfg, []byte(s), 0644)
 }
 

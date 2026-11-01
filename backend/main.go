@@ -46,7 +46,7 @@ func main() {
 
 	tn := NewTuner(hw, NewLogTail(*logDir), hw.Min, hw.Max)
 	tn.prep = func() error {
-		return EnableLogging(*logDir)
+		return EnableLogging(*logDir, 0)
 	}
 	tn.cleanup = func() {
 		if err := DisableLogging(); err != nil {

@@ -48,6 +48,16 @@ func (t *LogTail) newest() string {
 	return best
 }
 
+// Prune deletes every csv except the one being followed
+func (t *LogTail) Prune() {
+	files, _ := filepath.Glob(filepath.Join(t.dir, "*.csv"))
+	for _, f := range files {
+		if f != t.file {
+			os.Remove(f)
+		}
+	}
+}
+
 // Skip jumps to the end of whatever is there now, so old frames dont count
 func (t *LogTail) Skip() {
 	t.Read()
