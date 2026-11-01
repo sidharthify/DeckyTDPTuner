@@ -61,6 +61,7 @@ type Tuner struct {
 	mu     sync.Mutex
 	st     Status
 	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 func NewTuner(hw capper, src frameSource, min, max int) *Tuner {
@@ -268,7 +269,9 @@ func (t *Tuner) Start(appid string, target, min int, done func(watts int)) error
 		return fmt.Errorf("already tuning %s", t.st.AppID)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
 	t.cancel = cancel
+	t.done = finished
 	t.st = Status{State: "tuning", AppID: appid, Target: target}
 	if min > 0 {
 		t.Min = min
@@ -278,6 +281,7 @@ func (t *Tuner) Start(appid string, target, min int, done func(watts int)) error
 	before := t.hw.Get()
 
 	go func() {
+		defer close(finished)
 		defer cancel()
 		res, err := t.search(ctx, target)
 		// before done, which might hand logging over to the governor
@@ -311,10 +315,18 @@ func (t *Tuner) Start(appid string, target, min int, done func(watts int)) error
 	return nil
 }
 
+// Stop waits for the run to put the cap back, so whoever restores after it
+// doesnt get told its still tuning or have the cap changed under them
 func (t *Tuner) Stop() {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.cancel != nil {
-		t.cancel()
+	cancel, done := t.cancel, t.done
+	t.cancel, t.done = nil, nil
+	t.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
 	}
 }
