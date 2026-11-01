@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Test backend
+        working-directory: backend
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
+          go test -race ./...
+
+      - name: Build backend
+        run: make -C backend
+
+      - name: Build frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Package
+        id: pkg
+        run: echo "zip=$(./scripts/package.sh)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeckyTDPTuner
+          path: ${{ steps.pkg.outputs.zip }}
+
+      # tag has to match package.json, decky shows that version
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME doesn't match package.json $version"
+            exit 1
+          fi
+          flags=""
+          case "$GITHUB_REF_NAME" in
+            v0.*) flags="--prerelease" ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" "${{ steps.pkg.outputs.zip }}" \
+            --title "$GITHUB_REF_NAME" --generate-notes $flags
