@@ -99,7 +99,7 @@ export function TuneSection({ appid, data, target, setTarget, refresh }: Props) 
               description={`Even at max it only managed ${st.fps.toFixed(1)} fps (low ${st.low.toFixed(1)}). Nothing was saved.`}
             />
           </PanelSectionRow>
-          {st.suggest > 0 && (
+          {st.suggest > 0 && target != st.suggest && (
             <PanelSectionRow>
               <ButtonItem layout="below" onClick={() => setTarget(st.suggest)}>
                 Use {st.suggest} fps instead
