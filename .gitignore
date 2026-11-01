@@ -1,0 +1,7 @@
+node_modules
+dist/
+out/
+backend/out
+cli/
+__pycache__/
+*.zip
