@@ -1,8 +1,7 @@
 # DeckyTDPTuner
 
 <p align="center">
-  <img src="assets/tune.jpg" width="49%" alt="Tune section in the Quick Access Menu">
-  <img src="assets/charger.jpg" width="49%" alt="On charger and advanced sections">
+  <img src="assets/tune.jpg" alt="Tune section in the Quick Access Menu">
 </p>
 
 ## Overview
