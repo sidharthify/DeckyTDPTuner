@@ -2,7 +2,10 @@ import { Router } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { apply, reset, stop } from "./backend";
 
+let current = "";
+
 async function applyFor(appid: string) {
+  current = appid;
   const r = await apply(appid);
   if (r.ok && r.data) {
     toaster.toast({ title: "TDP Tuner", body: `Set ${r.data.watts}W (tuned for ${r.data.target} fps)` });
@@ -19,6 +22,11 @@ export function watchGames() {
 
   return SteamClient.GameSessions.RegisterForAppLifetimeNotifications(async (n) => {
     if (!n.bRunning) {
+      const appid = String(n.unAppID);
+      if (n.unAppID && current && appid != current) {
+        return;
+      }
+      current = "";
       await stop();
       await reset();
       return;
