@@ -1,4 +1,4 @@
-package main
+package profiles
 
 import (
 	"encoding/json"
@@ -15,14 +15,14 @@ type Profile struct {
 	Live   bool  `json:"live"`
 }
 
-type Profiles struct {
+type Store struct {
 	path string
 	mu   sync.Mutex
 	m    map[string]Profile
 }
 
-func LoadProfiles(path string) *Profiles {
-	p := &Profiles{path: path, m: map[string]Profile{}}
+func Load(path string) *Store {
+	p := &Store{path: path, m: map[string]Profile{}}
 	b, err := os.ReadFile(path)
 	if err == nil {
 		json.Unmarshal(b, &p.m)
@@ -30,7 +30,7 @@ func LoadProfiles(path string) *Profiles {
 	return p
 }
 
-func (p *Profiles) save() error {
+func (p *Store) save() error {
 	b, err := json.MarshalIndent(p.m, "", "  ")
 	if err != nil {
 		return err
@@ -45,14 +45,14 @@ func (p *Profiles) save() error {
 	return os.Rename(tmp, p.path)
 }
 
-func (p *Profiles) Get(appid string) (Profile, bool) {
+func (p *Store) Get(appid string) (Profile, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	pr, ok := p.m[appid]
 	return pr, ok
 }
 
-func (p *Profiles) Set(appid string, watts, target int) error {
+func (p *Store) Set(appid string, watts, target int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	live := p.m[appid].Live
@@ -60,7 +60,7 @@ func (p *Profiles) Set(appid string, watts, target int) error {
 	return p.save()
 }
 
-func (p *Profiles) SetLive(appid string, live bool, target int) (Profile, error) {
+func (p *Store) SetLive(appid string, live bool, target int) (Profile, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	pr := p.m[appid]
@@ -72,14 +72,14 @@ func (p *Profiles) SetLive(appid string, live bool, target int) (Profile, error)
 	return pr, p.save()
 }
 
-func (p *Profiles) Delete(appid string) error {
+func (p *Store) Delete(appid string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	delete(p.m, appid)
 	return p.save()
 }
 
-func (p *Profiles) All() map[string]Profile {
+func (p *Store) All() map[string]Profile {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	out := make(map[string]Profile, len(p.m))

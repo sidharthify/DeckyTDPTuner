@@ -1,6 +1,8 @@
-package main
+package tdp
 
 import (
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/mangohud"
+
 	"testing"
 	"time"
 )
@@ -21,14 +23,14 @@ type fakeSrc struct{ hw *fakeHw }
 
 func (f *fakeSrc) Skip() {
 }
-func (f *fakeSrc) Read() []Sample {
+func (f *fakeSrc) Read() []mangohud.Sample {
 	fps := 60.0
 	if f.hw.w < 9 {
 		fps = float64(f.hw.w) * 6
 	}
-	out := make([]Sample, 10)
+	out := make([]mangohud.Sample, 10)
 	for i := range out {
-		out[i] = Sample{FPS: fps, Frametime: 1000 / fps}
+		out[i] = mangohud.Sample{FPS: fps, Frametime: 1000 / fps}
 	}
 	return out
 }
@@ -74,11 +76,11 @@ func TestUnreachable(t *testing.T) {
 }
 
 func TestStats(t *testing.T) {
-	s := []Sample{}
+	s := []mangohud.Sample{}
 	for i := 0; i < 19; i++ {
-		s = append(s, Sample{Frametime: 10})
+		s = append(s, mangohud.Sample{Frametime: 10})
 	}
-	s = append(s, Sample{Frametime: 50})
+	s = append(s, mangohud.Sample{Frametime: 50})
 
 	avg, low := stats(s)
 	if int(avg) != 83 || low != 100 {

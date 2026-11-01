@@ -1,14 +1,16 @@
-package main
+package tdp
 
 import (
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/mangohud"
+
 	"testing"
 	"time"
 )
 
-func frames(fps, gpu float64) []Sample {
-	out := make([]Sample, 30)
+func frames(fps, gpu float64) []mangohud.Sample {
+	out := make([]mangohud.Sample, 30)
 	for i := range out {
-		out[i] = Sample{FPS: fps, Frametime: 1000 / fps, GPULoad: gpu}
+		out[i] = mangohud.Sample{FPS: fps, Frametime: 1000 / fps, GPULoad: gpu}
 	}
 	return out
 }

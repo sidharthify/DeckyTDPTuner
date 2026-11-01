@@ -1,6 +1,8 @@
-package main
+package tdp
 
 import (
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/mangohud"
+
 	"context"
 	"log"
 	"sync"
@@ -26,9 +28,9 @@ type GovStatus struct {
 type Governor struct {
 	hw      capper
 	src     frameSource
-	prep    func() error
-	prune   func()
-	cleanup func()
+	Prep    func() error
+	Prune   func()
+	Cleanup func()
 
 	Min, Max   int
 	Tick       time.Duration
@@ -104,7 +106,7 @@ func (g *Governor) reset(now time.Time, start, base int) {
 	g.set(start)
 }
 
-func (g *Governor) step(now time.Time, target int, s []Sample) {
+func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 	if len(s) == 0 {
 		return
 	}
@@ -180,8 +182,8 @@ func (g *Governor) step(now time.Time, target int, s []Sample) {
 func (g *Governor) Start(appid string, target, start, base int) error {
 	g.Stop()
 
-	if g.prep != nil {
-		if err := g.prep(); err != nil {
+	if g.Prep != nil {
+		if err := g.Prep(); err != nil {
 			g.mu.Lock()
 			g.st = GovStatus{Message: err.Error()}
 			g.mu.Unlock()
@@ -210,8 +212,8 @@ func (g *Governor) Start(appid string, target, start, base int) error {
 func (g *Governor) loop(ctx context.Context, target int) {
 	tick := time.NewTicker(g.Tick)
 	defer tick.Stop()
-	if g.cleanup != nil {
-		defer g.cleanup()
+	if g.Cleanup != nil {
+		defer g.Cleanup()
 	}
 
 	n := 0
@@ -223,11 +225,11 @@ func (g *Governor) loop(ctx context.Context, target int) {
 		case now := <-tick.C:
 			n++
 			// steam rewrites the mangoapp config sometimes
-			if n%20 == 0 && g.prep != nil {
-				g.prep()
+			if n%20 == 0 && g.Prep != nil {
+				g.Prep()
 			}
-			if n%120 == 0 && g.prune != nil {
-				g.prune()
+			if n%120 == 0 && g.Prune != nil {
+				g.Prune()
 			}
 
 			s := g.src.Read()

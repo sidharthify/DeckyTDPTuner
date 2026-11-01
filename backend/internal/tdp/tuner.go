@@ -1,6 +1,8 @@
-package main
+package tdp
 
 import (
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/mangohud"
+
 	"context"
 	"fmt"
 	"math"
@@ -16,7 +18,7 @@ type capper interface {
 
 type frameSource interface {
 	Skip()
-	Read() []Sample
+	Read() []mangohud.Sample
 }
 
 type Status struct {
@@ -36,9 +38,9 @@ type Tuner struct {
 	hw  capper
 	src frameSource
 	// gets called before every step, used to keep mangoapp logging on
-	prep func() error
+	Prep func() error
 	// and this once its over
-	cleanup func()
+	Cleanup func()
 
 	Min, Max int
 	Headroom int
@@ -91,7 +93,7 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 }
 
 // returns avg fps and fps at the 95th percentile frametime
-func stats(s []Sample) (float64, float64) {
+func stats(s []mangohud.Sample) (float64, float64) {
 	if len(s) == 0 {
 		return 0, 0
 	}
@@ -110,8 +112,8 @@ func (t *Tuner) measure(ctx context.Context, watts, target int) (bool, error) {
 	if err := t.hw.Set(watts); err != nil {
 		return false, err
 	}
-	if t.prep != nil {
-		if err := t.prep(); err != nil {
+	if t.Prep != nil {
+		if err := t.Prep(); err != nil {
 			return false, err
 		}
 	}
@@ -124,7 +126,7 @@ func (t *Tuner) measure(ctx context.Context, watts, target int) (bool, error) {
 	}
 	t.src.Skip()
 
-	var samples []Sample
+	var samples []mangohud.Sample
 	end := time.Now().Add(t.Window)
 	for time.Now().Before(end) {
 		if err := sleepCtx(ctx, t.Window/40); err != nil {
@@ -204,8 +206,8 @@ func (t *Tuner) Start(appid string, target int, done func(watts int)) error {
 		defer cancel()
 		res, err := t.search(ctx, target)
 		// before done, which might hand logging over to the governor
-		if t.cleanup != nil {
-			t.cleanup()
+		if t.Cleanup != nil {
+			t.Cleanup()
 		}
 
 		if err != nil {

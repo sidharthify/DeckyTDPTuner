@@ -1,6 +1,10 @@
-package main
+package server
 
 import (
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/hwmon"
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/profiles"
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/tdp"
+
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -17,13 +21,17 @@ type Request struct {
 }
 
 type Server struct {
-	hw       *Hwmon
-	tuner    *Tuner
-	gov      *Governor
-	profiles *Profiles
+	hw       *hwmon.Hwmon
+	tuner    *tdp.Tuner
+	gov      *tdp.Governor
+	profiles *profiles.Store
 }
 
-func (s *Server) govern(appid string, pr Profile) error {
+func New(hw *hwmon.Hwmon, tuner *tdp.Tuner, gov *tdp.Governor, profiles *profiles.Store) *Server {
+	return &Server{hw: hw, tuner: tuner, gov: gov, profiles: profiles}
+}
+
+func (s *Server) govern(appid string, pr profiles.Profile) error {
 	// tuned value already has 1W of headroom on top, the floor doesnt need it
 	base := pr.Watts - 1
 	return s.gov.Start(appid, pr.Target, pr.Watts, base)

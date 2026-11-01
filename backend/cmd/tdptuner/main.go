@@ -7,6 +7,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/hwmon"
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/mangohud"
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/profiles"
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/server"
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/tdp"
 )
 
 func main() {
@@ -19,7 +25,7 @@ func main() {
 	logDir := flag.String("logdir", "/tmp/tdptuner", "where mangoapp should write its logs")
 	flag.Parse()
 
-	hw, err := findHwmon()
+	hw, err := hwmon.Find()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -40,43 +46,43 @@ func main() {
 		}
 	}
 	if *info || *set > 0 {
-		fmt.Printf("%s: %dW (range %d-%dW, fast limit: %v)\n", hw.dir, hw.Get(), hw.Min, hw.Max, hw.fast)
+		fmt.Printf("%s: %dW (range %d-%dW, fast limit: %v)\n", hw.Dir, hw.Get(), hw.Min, hw.Max, hw.Fast)
 		return
 	}
 
-	tn := NewTuner(hw, NewLogTail(*logDir), hw.Min, hw.Max)
-	tn.prep = func() error {
-		return EnableLogging(*logDir, 0)
+	tn := tdp.NewTuner(hw, mangohud.NewLogTail(*logDir), hw.Min, hw.Max)
+	tn.Prep = func() error {
+		return mangohud.EnableLogging(*logDir, 0)
 	}
-	tn.cleanup = func() {
-		if err := DisableLogging(); err != nil {
+	tn.Cleanup = func() {
+		if err := mangohud.DisableLogging(); err != nil {
 			log.Printf("turning mangoapp logging off: %v", err)
 		}
 		// csvs get big with log_interval=0
 		os.RemoveAll(*logDir)
 	}
 
-	gl := NewLogTail(*logDir)
-	gov := NewGovernor(hw, gl, hw.Min, hw.Max)
-	gov.prep = func() error {
-		return EnableLogging(*logDir, 100)
+	gl := mangohud.NewLogTail(*logDir)
+	gov := tdp.NewGovernor(hw, gl, hw.Min, hw.Max)
+	gov.Prep = func() error {
+		return mangohud.EnableLogging(*logDir, 100)
 	}
-	gov.prune = gl.Prune
-	gov.cleanup = tn.cleanup
+	gov.Prune = gl.Prune
+	gov.Cleanup = tn.Cleanup
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sig
-		log.Printf("exiting, putting tdp back to %dW", hw.orig1/uw)
+		log.Printf("exiting, putting tdp back to %dW", hw.Orig())
 		tn.Stop()
 		gov.Stop()
-		DisableLogging()
+		mangohud.DisableLogging()
 		hw.Restore()
 		os.Remove(*sock)
 		os.Exit(0)
 	}()
 
-	srv := &Server{hw: hw, tuner: tn, gov: gov, profiles: LoadProfiles(*profPath)}
+	srv := server.New(hw, tn, gov, profiles.Load(*profPath))
 	log.Fatal(srv.Serve(*sock))
 }
