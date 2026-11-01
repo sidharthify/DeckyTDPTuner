@@ -49,6 +49,8 @@ type Governor struct {
 	JitterRise float64 // a drop that makes jitter this much worse gets undone
 	JitterMin  float64 // ms, ignore rises smaller than this
 
+	// held across Start and Stop so two starts cant both spin up a loop
+	run    sync.Mutex
 	mu     sync.Mutex
 	st     GovStatus
 	cancel context.CancelFunc
@@ -271,7 +273,9 @@ func (g *Governor) jitter() float64 {
 
 // min is the lowest it'll ever go, 0 keeps whatever it was
 func (g *Governor) Start(appid string, target, start, base, min int) error {
-	g.Stop()
+	g.run.Lock()
+	defer g.run.Unlock()
+	g.stop()
 	if min > 0 {
 		g.Min = min
 	}
@@ -350,6 +354,12 @@ func (g *Governor) loop(ctx context.Context, target int) {
 
 // Stop waits for the loop to exit so its cleanup cant race whoever starts logging next
 func (g *Governor) Stop() {
+	g.run.Lock()
+	defer g.run.Unlock()
+	g.stop()
+}
+
+func (g *Governor) stop() {
 	g.mu.Lock()
 	cancel, done := g.cancel, g.done
 	g.cancel, g.done = nil, nil
