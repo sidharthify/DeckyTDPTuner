@@ -54,9 +54,45 @@ func (s *Server) restoreGame() error {
 		return s.gov.Start(s.running, pr.Target, start, pr.Watts)
 	}
 	if pr.Watts > 0 {
-		return s.hw.Set(pr.Watts)
+		return s.rampTo(pr.Watts)
 	}
 	return s.hw.Restore()
+}
+
+// rampTo walks the cap down 1W per step instead of dropping it all at once.
+// anything else that sets watts bumps rampGen, which stops it. caller holds s.mu
+func (s *Server) rampTo(target int) error {
+	s.rampGen++
+	gen := s.rampGen
+	step := s.rampStep
+	if step == 0 {
+		step = 500 * time.Millisecond
+	}
+	from := s.hw.Get()
+	if from <= target {
+		return s.hw.Set(target)
+	}
+
+	go func() {
+		for w := from - 1; w >= target; w-- {
+			time.Sleep(step)
+			s.mu.Lock()
+			if s.rampGen != gen || s.boosted {
+				s.mu.Unlock()
+				return
+			}
+			if err := s.hw.Set(w); err != nil {
+				log.Printf("ramp: set %dW: %v", w, err)
+			}
+			s.mu.Unlock()
+		}
+	}()
+	return nil
+}
+
+// caller holds s.mu
+func (s *Server) cancelRamp() {
+	s.rampGen++
 }
 
 // under this the pinned clock gets scaled down with tdp, 1600MHz at 3W
@@ -86,6 +122,7 @@ func (s *Server) chargerWatts() int {
 
 // caller holds s.mu, also used to re-apply when settings change while plugged in
 func (s *Server) boost() {
+	s.cancelRamp()
 	s.gov.Stop()
 	w := s.chargerWatts()
 	if err := s.hw.Set(w); err != nil {

@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/sidharthify/DeckyTDPTuner/backend/internal/gpu"
 	"github.com/sidharthify/DeckyTDPTuner/backend/internal/hwmon"
@@ -33,12 +34,14 @@ type Server struct {
 
 	settingsPath string
 
-	mu      sync.Mutex
-	set     Settings
-	running string // appid of the game thats up, if any
-	ac      bool
-	boosted bool // full power on charger is applied right now
-	pinned  bool // we're holding the gpu clock
+	mu       sync.Mutex
+	set      Settings
+	running  string // appid of the game thats up, if any
+	ac       bool
+	boosted  bool // full power on charger is applied right now
+	pinned   bool // we're holding the gpu clock
+	rampGen  int
+	rampStep time.Duration // 0 means 500ms
 }
 
 func New(hw *hwmon.Hwmon, g *gpu.GPU, tuner *tdp.Tuner, gov *tdp.Governor, profiles *profiles.Store, settingsPath string) *Server {
@@ -88,6 +91,7 @@ func (s *Server) handle(req Request) (any, error) {
 			// dont tune with the gpu pinned, the watcher puts it back after
 			s.unboost()
 		}
+		s.cancelRamp()
 		s.mu.Unlock()
 		s.gov.Stop()
 		err := s.tuner.Start(appid, target, func(watts int) {
@@ -110,6 +114,7 @@ func (s *Server) handle(req Request) (any, error) {
 		}
 		s.mu.Lock()
 		s.running = req.AppID
+		s.cancelRamp()
 		boosted := s.boosted
 		s.mu.Unlock()
 
@@ -140,6 +145,7 @@ func (s *Server) handle(req Request) (any, error) {
 			return nil, err
 		}
 		s.mu.Lock()
+		s.cancelRamp()
 		boosted := s.boosted
 		s.mu.Unlock()
 		// tuner starts it when its done, and the charger does on unplug
@@ -162,6 +168,7 @@ func (s *Server) handle(req Request) (any, error) {
 		s.gov.Stop()
 		s.mu.Lock()
 		s.running = ""
+		s.cancelRamp()
 		boosted := s.boosted
 		s.mu.Unlock()
 		// stay at full power while plugged in, game or not
