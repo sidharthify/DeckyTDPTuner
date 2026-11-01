@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/gpu"
 	"github.com/sidharthify/DeckyTDPTuner/backend/internal/hwmon"
 	"github.com/sidharthify/DeckyTDPTuner/backend/internal/mangohud"
 	"github.com/sidharthify/DeckyTDPTuner/backend/internal/profiles"
@@ -23,6 +24,7 @@ func main() {
 	sock := flag.String("sock", "/tmp/tdptuner.sock", "socket for the plugin to talk to")
 	profPath := flag.String("profiles", "profiles.json", "where tuned values go")
 	logDir := flag.String("logdir", "/tmp/tdptuner", "where mangoapp should write its logs")
+	setPath := flag.String("settings", "settings.json", "plugin wide settings")
 	flag.Parse()
 
 	hw, err := hwmon.Find()
@@ -70,6 +72,14 @@ func main() {
 	gov.Prune = gl.Prune
 	gov.Cleanup = tn.Cleanup
 
+	gp, err := gpu.Find()
+	if err != nil {
+		log.Printf("%v, full power on charger will only touch tdp", err)
+		gp = nil
+	}
+
+	srv := server.New(hw, gp, tn, gov, profiles.Load(*profPath), *setPath)
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
@@ -77,12 +87,13 @@ func main() {
 		log.Printf("exiting, putting tdp back to %dW", hw.Orig())
 		tn.Stop()
 		gov.Stop()
+		srv.Close()
 		mangohud.DisableLogging()
 		hw.Restore()
 		os.Remove(*sock)
 		os.Exit(0)
 	}()
 
-	srv := server.New(hw, tn, gov, profiles.Load(*profPath))
+	go srv.WatchCharger()
 	log.Fatal(srv.Serve(*sock))
 }

@@ -1,16 +1,18 @@
 package server
 
 import (
-	"github.com/sidharthify/DeckyTDPTuner/backend/internal/hwmon"
-	"github.com/sidharthify/DeckyTDPTuner/backend/internal/profiles"
-	"github.com/sidharthify/DeckyTDPTuner/backend/internal/tdp"
-
 	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"sync"
+
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/gpu"
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/hwmon"
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/profiles"
+	"github.com/sidharthify/DeckyTDPTuner/backend/internal/tdp"
 )
 
 type Request struct {
@@ -25,10 +27,21 @@ type Server struct {
 	tuner    *tdp.Tuner
 	gov      *tdp.Governor
 	profiles *profiles.Store
+	gpu      *gpu.GPU // nil if we couldnt find one
+
+	settingsPath string
+
+	mu      sync.Mutex
+	set     Settings
+	running string // appid of the game thats up, if any
+	ac      bool
+	boosted bool // full power on charger is applied right now
 }
 
-func New(hw *hwmon.Hwmon, tuner *tdp.Tuner, gov *tdp.Governor, profiles *profiles.Store) *Server {
-	return &Server{hw: hw, tuner: tuner, gov: gov, profiles: profiles}
+func New(hw *hwmon.Hwmon, g *gpu.GPU, tuner *tdp.Tuner, gov *tdp.Governor, profiles *profiles.Store, settingsPath string) *Server {
+	s := &Server{hw: hw, gpu: g, tuner: tuner, gov: gov, profiles: profiles, settingsPath: settingsPath}
+	s.loadSettings()
+	return s
 }
 
 func (s *Server) govern(appid string, pr profiles.Profile) error {
@@ -40,7 +53,13 @@ func (s *Server) govern(appid string, pr profiles.Profile) error {
 func (s *Server) handle(req Request) (any, error) {
 	switch req.Cmd {
 	case "status":
-		out := map[string]any{"status": s.tuner.Status(), "governor": s.gov.Status(), "min": s.hw.Min, "max": s.hw.Max}
+		s.mu.Lock()
+		charger := map[string]any{"ac": s.ac, "full_power": s.set.FullPower, "boosted": s.boosted, "gpu_max": 0}
+		s.mu.Unlock()
+		if s.gpu != nil {
+			charger["gpu_max"] = s.gpu.Max
+		}
+		out := map[string]any{"status": s.tuner.Status(), "governor": s.gov.Status(), "min": s.hw.Min, "max": s.hw.Max, "charger": charger}
 		if pr, ok := s.profiles.Get(req.AppID); ok {
 			out["profile"] = pr
 		}
@@ -51,6 +70,12 @@ func (s *Server) handle(req Request) (any, error) {
 			return nil, fmt.Errorf("need appid and target")
 		}
 		appid, target := req.AppID, req.Target
+		s.mu.Lock()
+		if s.boosted {
+			// dont tune with the gpu pinned, the watcher puts it back after
+			s.unboost()
+		}
+		s.mu.Unlock()
 		s.gov.Stop()
 		err := s.tuner.Start(appid, target, func(watts int) {
 			if err := s.profiles.Set(appid, watts, target); err != nil {
@@ -70,9 +95,18 @@ func (s *Server) handle(req Request) (any, error) {
 		if s.tuner.Status().State == "tuning" {
 			return nil, fmt.Errorf("tuning right now")
 		}
+		s.mu.Lock()
+		s.running = req.AppID
+		boosted := s.boosted
+		s.mu.Unlock()
+
 		pr, ok := s.profiles.Get(req.AppID)
 		if !ok {
 			return nil, nil
+		}
+		// on the charger, unplugging applies it later
+		if boosted {
+			return pr, nil
 		}
 		if pr.Live {
 			return pr, s.govern(req.AppID, pr)
@@ -92,8 +126,11 @@ func (s *Server) handle(req Request) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if s.tuner.Status().State == "tuning" {
-			// tuner starts it when its done
+		s.mu.Lock()
+		boosted := s.boosted
+		s.mu.Unlock()
+		// tuner starts it when its done, and the charger does on unplug
+		if s.tuning() || boosted {
 			return pr, nil
 		}
 		if req.On {
@@ -110,7 +147,23 @@ func (s *Server) handle(req Request) (any, error) {
 			return nil, fmt.Errorf("tuning right now")
 		}
 		s.gov.Stop()
+		s.mu.Lock()
+		s.running = ""
+		boosted := s.boosted
+		s.mu.Unlock()
+		// stay at full power while plugged in, game or not
+		if boosted {
+			return nil, nil
+		}
 		return nil, s.hw.Restore()
+
+	case "fullpower":
+		s.mu.Lock()
+		s.set.FullPower = req.On
+		err := s.saveSettings()
+		s.mu.Unlock()
+		s.checkCharger()
+		return nil, err
 
 	case "forget":
 		if s.gov.Status().AppID == req.AppID {
