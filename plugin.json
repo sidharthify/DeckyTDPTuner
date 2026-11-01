@@ -1,0 +1,11 @@
+{
+  "name": "TDP Tuner",
+  "author": "sidharthify",
+  "flags": ["root"],
+  "api_version": 1,
+  "publish": {
+    "tags": ["tdp", "power", "battery", "root"],
+    "description": "Finds the lowest TDP that still holds your target framerate, per game.",
+    "image": "https://opengraph.githubassets.com/1/sidharthify/DeckyTDPTuner"
+  }
+}
