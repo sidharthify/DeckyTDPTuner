@@ -1,6 +1,6 @@
 {
   "name": "decky-tdp-tuner",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Finds the lowest TDP that holds a target framerate on the Steam Deck",
   "type": "module",
   "scripts": {
