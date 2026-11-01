@@ -37,6 +37,8 @@ type Tuner struct {
 	src frameSource
 	// gets called before every step, used to keep mangoapp logging on
 	prep func() error
+	// and this once its over
+	cleanup func()
 
 	Min, Max int
 	Headroom int
@@ -200,6 +202,9 @@ func (t *Tuner) Start(appid string, target int, done func(watts int)) error {
 
 	go func() {
 		defer cancel()
+		if t.cleanup != nil {
+			defer t.cleanup()
+		}
 		res, err := t.search(ctx, target)
 
 		if err != nil {
