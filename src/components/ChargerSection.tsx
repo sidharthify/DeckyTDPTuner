@@ -9,8 +9,22 @@ export function ChargerSection({ data }: { data: StatusData }) {
   // local copy so sliders dont jump around while the 1s poll catches up
   const [cs, setCs] = useState<ChargerSettings>(ch.settings);
 
+  const watts = cs.watts > 0 ? cs.watts : data.max;
+
+  // same as the backend, full clock only from gpu_full_watts up
+  const gpuCap = (w: number) => {
+    const c = Math.floor((ch.gpu_max * w) / ch.gpu_full_watts / 100) * 100;
+    return Math.max(ch.gpu_min, Math.min(ch.gpu_max, c));
+  };
+  const cap = gpuCap(watts);
+
   const update = async (patch: Partial<ChargerSettings>) => {
     const next = { ...cs, ...patch };
+    // dropping the tdp pulls the clock down with it
+    const c = gpuCap(next.watts > 0 ? next.watts : data.max);
+    if (next.gpu_clock > c) {
+      next.gpu_clock = c;
+    }
     setCs(next);
     check(await setSettings(next));
   };
@@ -30,7 +44,7 @@ export function ChargerSection({ data }: { data: StatusData }) {
           <PanelSectionRow>
             <SliderField
               label="TDP on charger"
-              value={cs.watts > 0 ? cs.watts : data.max}
+              value={watts}
               min={data.min}
               max={data.max}
               step={1}
@@ -48,9 +62,10 @@ export function ChargerSection({ data }: { data: StatusData }) {
             <PanelSectionRow>
               <SliderField
                 label="GPU clock"
-                value={cs.gpu_clock > 0 ? cs.gpu_clock : ch.gpu_max}
+                description={cap < ch.gpu_max ? `Limited to ${cap}MHz at ${watts}W` : undefined}
+                value={cs.gpu_clock > 0 ? Math.min(cs.gpu_clock, cap) : cap}
                 min={ch.gpu_min}
-                max={ch.gpu_max}
+                max={cap}
                 step={100}
                 showValue
                 valueSuffix="MHz"

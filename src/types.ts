@@ -46,6 +46,8 @@ export type Charger = {
   watts: number;
   gpu_min: number;
   gpu_max: number;
+  gpu_cap: number;
+  gpu_full_watts: number;
 };
 
 export type StatusData = {
