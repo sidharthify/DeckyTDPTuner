@@ -22,17 +22,20 @@ type frameSource interface {
 }
 
 type Status struct {
-	State   string  `json:"state"` // idle, tuning, done, failed
-	AppID   string  `json:"appid"`
-	Target  int     `json:"target"`
-	Watts   int     `json:"watts"`
-	Lo      int     `json:"lo"`
-	Hi      int     `json:"hi"`
-	FPS     float64 `json:"fps"`
-	Low     float64 `json:"low"`
-	Jitter  float64 `json:"jitter"`
-	Result  int     `json:"result"`
-	Message string  `json:"message"`
+	State  string  `json:"state"` // idle, tuning, done, failed
+	AppID  string  `json:"appid"`
+	Target int     `json:"target"`
+	Watts  int     `json:"watts"`
+	Lo     int     `json:"lo"`
+	Hi     int     `json:"hi"`
+	FPS    float64 `json:"fps"`
+	Low    float64 `json:"low"`
+	Jitter float64 `json:"jitter"`
+	Result int     `json:"result"`
+	// set when even max cant hold target, Suggest is a target that would
+	Unreachable bool   `json:"unreachable"`
+	Suggest     int    `json:"suggest"`
+	Message     string `json:"message"`
 }
 
 type Tuner struct {
@@ -169,6 +172,16 @@ func (t *Tuner) measure(ctx context.Context, watts, target int) (bool, float64, 
 	return ok, jit, nil
 }
 
+// highest multiple of 5 that would have passed with what max managed
+func suggest(avg, low, tol, lowTol float64) int {
+	best := math.Min(avg/(1-tol), low/(1-lowTol))
+	sug := int(best) / 5 * 5
+	if sug < 20 {
+		return 0
+	}
+	return sug
+}
+
 func (t *Tuner) search(ctx context.Context, target int) (int, error) {
 	lo, hi := t.Min, t.Max
 	t.update(func(s *Status) {
@@ -180,7 +193,11 @@ func (t *Tuner) search(ctx context.Context, target int) (int, error) {
 		return 0, err
 	}
 	if !ok {
-		return hi, fmt.Errorf("can't hold %d fps even at %dW", target, hi)
+		t.update(func(s *Status) {
+			s.Unreachable = true
+			s.Suggest = suggest(s.FPS, s.Low, t.Tol, t.LowTol)
+		})
+		return hi, fmt.Errorf("%dW can't hold %d fps, best was %.0f fps", hi, target, t.Status().FPS)
 	}
 
 	// smallest watts that still passes

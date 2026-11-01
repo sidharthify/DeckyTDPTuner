@@ -126,7 +126,7 @@ func TestUnreachable(t *testing.T) {
 	tn.Start("123", 90, nil)
 
 	s := wait(tn)
-	if s.State != "failed" || hw.Get() != 15 {
+	if s.State != "failed" || !s.Unreachable || s.Suggest != 60 || hw.Get() != 15 {
 		t.Fatalf("status %+v, hw %d", s, hw.Get())
 	}
 }
