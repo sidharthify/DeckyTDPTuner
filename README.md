@@ -43,7 +43,7 @@ cd backend
 make
 ```
 
-Then put `dist/`, `main.py`, `plugin.json`, `package.json`, `LICENSE` and `backend/out/tdptuner` (as `bin/tdptuner`) into a folder called `DeckyTDPTuner` and zip it, or let the [decky CLI](https://github.com/SteamDeckHomebrew/cli) do it for you, it builds the backend inside the holo go toolchain image:
+Then `./scripts/package.sh` puts everything into `out/DeckyTDPTuner-<version>.zip` (it just copies what you built, so build first), or let the [decky CLI](https://github.com/SteamDeckHomebrew/cli) do the whole thing for you, it builds the backend inside the holo go toolchain image:
 
 ```sh
 decky plugin build .
