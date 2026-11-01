@@ -1,5 +1,10 @@
 # DeckyTDPTuner
 
+<p align="center">
+  <img src="assets/tune.jpg" width="49%" alt="Tune section in the Quick Access Menu">
+  <img src="assets/charger.jpg" width="49%" alt="On charger and advanced sections">
+</p>
+
 ## Overview
 >[!WARNING]
 > This plugin runs as **root** and writes straight to the amdgpu power limits in sysfs (`power1_cap` and `power2_cap`). It never goes outside the range the driver reports, but if something goes wrong a reboot puts everything back to stock.
