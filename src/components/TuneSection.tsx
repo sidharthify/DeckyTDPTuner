@@ -44,7 +44,7 @@ export function TuneSection({ appid, data, target, setTarget, refresh }: Props) 
   };
 
   const onForget = async () => {
-    await forget(appid);
+    check(await forget(appid));
     refresh();
   };
 
