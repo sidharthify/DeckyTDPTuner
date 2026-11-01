@@ -18,11 +18,13 @@ class Plugin:
         if self.proc and self.proc.returncode is None:
             return
         decky.logger.info(f"starting {BIN}")
-        log = open(LOG, "a")
-        self.proc = await asyncio.create_subprocess_exec(
-            BIN, "-sock", SOCK, "-profiles", PROFILES, "-settings", SETTINGS,
-            stdout=log, stderr=log,
-        )
+        if os.path.exists(SOCK):
+            os.remove(SOCK)
+        with open(LOG, "a") as log:
+            self.proc = await asyncio.create_subprocess_exec(
+                BIN, "-sock", SOCK, "-profiles", PROFILES, "-settings", SETTINGS,
+                stdout=log, stderr=log,
+            )
         # give it a sec to make the socket
         for _ in range(20):
             if os.path.exists(SOCK):
