@@ -8,19 +8,30 @@
 >[!WARNING]
 > This plugin runs as **root** and writes straight to the amdgpu power limits in sysfs (`power1_cap` and `power2_cap`). It never goes outside the range the driver reports, but if something goes wrong a reboot puts everything back to stock.
 
+>[!IMPORTANT]
+> This entire codebase has been handcoded by hand without the use of any Large Language Model. I may have asked Claude or Gemini about a few things here and there, but all the code was written by me.
+
+---
+
 Pick a target framerate in the Quick Access Menu, press "Find lowest TDP" and leave the game running somewhere that's roughly as heavy as the rest of it (a busy town, not a loading screen). The plugin starts at 15W, checks that the game can actually hold the target there, and then binary searches down until it finds the lowest wattage that still keeps the average and the 5% lows above the target. Each step settles for 5 seconds and samples for 10. The lowest passing wattage isn't always the nicest one though (Geometry Dash holds 90 fps at 4W but the frametime graph turns into a sawtooth, at 5W it's flat), so once it has a result it also measures frametime jitter and keeps going up 1W at a time for as long as the next watt is at least 25% smoother. A full run takes a minute or two, and the result gets saved for that game and applied automatically every time you launch it (or as soon as the plugin loads, if the game is already running).
 
 If even 15W can't hold the target, the panel says so in big red letters along with the best framerate it actually got, nothing gets saved, and there's a button to drop the target to something that would have passed.
 
+---
+
 ### Adjust live
 
 Tuning once only knows about whatever was on screen during that minute, so if the game gets heavier later (bosses, big fights, etc) the saved value might not be enough. With **Adjust live** turned on, the tuned value becomes the starting point and the floor, and the plugin keeps watching frametimes for the whole session. It raises the TDP by 2W when the framerate stays under 93% of the target for a couple of seconds (4W if it's under 75%), but only lowers it 1W at a time after 15 seconds of steady frames with the GPU under 85% busy. If a drop causes a miss, or makes the frametimes noticeably more jagged than they were before it, it goes straight back up and that wattage becomes the floor for a while (it decays after 2 minutes without misses). Changing the power cap doesn't cause a hitch by itself since it's just a ceiling the SMU enforces, the only thing that can stutter is the cap being too low when the load spikes, which is what the fast raise is for. If it's sitting at 15W and still missing, the panel tells you that too.
+
+---
 
 ### On charger
 
 Once you're plugged in the battery doesn't really matter, so **Full power on charger** pushes the TDP up (15W by default) and pins the GPU clock (1600MHz by default) as long as the charger is connected, with or without a game running. Both can be changed in the panel and get saved, and pinning the GPU can be turned off if you only want the TDP. The GPU clock is limited by the charger TDP, you get the full clock from 10W up and less below that, because pinning 1600MHz at 4W just starves the CPU since they share the same power budget.
 
 Unplugging puts back whatever the running game would normally get. Without live mode it ramps down 1W every half a second instead of dropping all at once, and with live mode on the governor starts from the charger wattage and works its way down on its own, so unplugging in a heavy area doesn't tank the framerate.
+
+---
 
 ### Advanced
 
