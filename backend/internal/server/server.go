@@ -48,9 +48,8 @@ func New(hw *hwmon.Hwmon, g *gpu.GPU, tuner *tdp.Tuner, gov *tdp.Governor, profi
 }
 
 func (s *Server) govern(appid string, pr profiles.Profile) error {
-	// tuned value already has 1W of headroom on top, the floor doesnt need it
-	base := pr.Watts - 1
-	return s.gov.Start(appid, pr.Target, pr.Watts, base)
+	// tuned value is the smooth one now, dont let it go under that
+	return s.gov.Start(appid, pr.Target, pr.Watts, pr.Watts)
 }
 
 func (s *Server) handle(req Request) (any, error) {
