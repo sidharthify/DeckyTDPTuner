@@ -35,11 +35,13 @@ type Governor struct {
 	Min, Max   int
 	Tick       time.Duration
 	RaiseStep  int
+	RaiseBig   int           // when fps is way under target
 	RaiseGap   time.Duration // dont raise again before the last raise had time to kick in
 	LowerAfter time.Duration
 	Blame      time.Duration // a miss this soon after a drop means the drop caused it
 	FloorDecay time.Duration
-	MissFrac   float64
+	MissTol    float64 // fps under target*MissTol counts as a miss
+	WinTicks   int     // how many ticks of history a miss is judged on
 	BusyMax    float64 // gpu load under this counts as headroom
 
 	mu     sync.Mutex
@@ -53,6 +55,12 @@ type Governor struct {
 	lastDrop           time.Time
 	lastMiss           time.Time
 	floorAt            time.Time
+	hist               []tickStat
+}
+
+type tickStat struct {
+	fps float64
+	n   int
 }
 
 func NewGovernor(hw capper, src frameSource, min, max int) *Governor {
@@ -63,11 +71,13 @@ func NewGovernor(hw capper, src frameSource, min, max int) *Governor {
 		Max:        max,
 		Tick:       500 * time.Millisecond,
 		RaiseStep:  2,
-		RaiseGap:   time.Second,
+		RaiseBig:   4,
+		RaiseGap:   2 * time.Second,
 		LowerAfter: 15 * time.Second,
 		Blame:      5 * time.Second,
 		FloorDecay: 2 * time.Minute,
-		MissFrac:   0.2,
+		MissTol:    0.93,
+		WinTicks:   4,
 		BusyMax:    85,
 	}
 }
@@ -103,6 +113,7 @@ func (g *Governor) reset(now time.Time, start, base int) {
 	g.base, g.floor = base, base
 	g.lastChange, g.lastMiss, g.floorAt = now, now, now
 	g.lastDrop = time.Time{}
+	g.hist = nil
 	g.set(start)
 }
 
@@ -111,14 +122,11 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 		return
 	}
 
-	budget := 1000 / float64(target)
-	over := 0
+	// in live mode mangoapp only logs every 100ms and the frametime column is
+	// whatever single frame landed there, so go by the fps column instead
 	fps, gpu := 0.0, 0.0
 	gpuN := 0
 	for _, x := range s {
-		if x.Frametime > budget*1.15 {
-			over++
-		}
 		fps += x.FPS
 		if x.GPULoad >= 0 {
 			gpu += x.GPULoad
@@ -136,7 +144,20 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 	g.st.FPS, g.st.GPU = fps, gpu
 	g.mu.Unlock()
 
-	miss := float64(over)/float64(len(s)) >= g.MissFrac || fps < float64(target)*0.95
+	g.hist = append(g.hist, tickStat{fps: fps, n: len(s)})
+	if len(g.hist) > g.WinTicks {
+		g.hist = g.hist[1:]
+	}
+	win, n := 0.0, 0
+	for _, h := range g.hist {
+		win += h.fps * float64(h.n)
+		n += h.n
+	}
+	win /= float64(n)
+
+	// one bad tick is a blip, has to be low over the window and still low now
+	lim := float64(target) * g.MissTol
+	miss := len(g.hist) >= 2 && win < lim && fps < lim
 	if miss {
 		g.lastMiss = now
 
@@ -149,12 +170,13 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 			return
 		}
 		w := g.watts + g.RaiseStep
-		// way off, dont crawl up
-		if fps < float64(target)*0.8 {
-			w = g.Max
+		if win < float64(target)*0.75 {
+			w = g.watts + g.RaiseBig
 		}
 		g.set(w)
 		g.lastChange = now
+		// judge the new watts on fresh frames only
+		g.hist = nil
 		g.mu.Lock()
 		g.st.Raises++
 		g.mu.Unlock()
