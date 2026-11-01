@@ -1,6 +1,7 @@
 package tdp
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -141,5 +142,16 @@ func TestStats(t *testing.T) {
 	avg, low := stats(s)
 	if int(avg) != 83 || low != 100 {
 		t.Fatalf("avg %v low %v", avg, low)
+	}
+}
+
+// steam limit not set, game renders 60 at any watts and the target is 45
+func TestUncapped(t *testing.T) {
+	tn, hw := newFake()
+	tn.Start("123", 45, 0, nil)
+
+	s := wait(tn)
+	if s.State != "failed" || s.Unreachable || !strings.Contains(s.Message, "framerate limit") || hw.Get() != 15 {
+		t.Fatalf("status %+v, hw %d", s, hw.Get())
 	}
 }

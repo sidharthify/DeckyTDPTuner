@@ -55,6 +55,8 @@ type Tuner struct {
 	LowTol   float64 // same for the 5% lows
 	// how much smoother the next watt has to be before we take it
 	JitterGain float64
+	// avg fps this far over target at max means the game isnt capped
+	UncappedTol float64
 
 	mu     sync.Mutex
 	st     Status
@@ -63,17 +65,18 @@ type Tuner struct {
 
 func NewTuner(hw capper, src frameSource, min, max int) *Tuner {
 	return &Tuner{
-		hw:         hw,
-		src:        src,
-		Min:        min,
-		Max:        max,
-		Headroom:   1,
-		Settle:     5 * time.Second,
-		Window:     10 * time.Second,
-		Tol:        0.03,
-		LowTol:     0.15,
-		JitterGain: 0.25,
-		st:         Status{State: "idle"},
+		hw:          hw,
+		src:         src,
+		Min:         min,
+		Max:         max,
+		Headroom:    1,
+		Settle:      5 * time.Second,
+		Window:      10 * time.Second,
+		Tol:         0.03,
+		LowTol:      0.15,
+		JitterGain:  0.25,
+		UncappedTol: 0.15,
+		st:          Status{State: "idle"},
 	}
 }
 
@@ -193,6 +196,11 @@ func (t *Tuner) search(ctx context.Context, target int) (int, error) {
 	ok, _, err := t.measure(ctx, hi, target)
 	if err != nil {
 		return 0, err
+	}
+	// the whole thing assumes the game is capped at target, if it isnt every
+	// watt passes and the search just slides down to the floor
+	if avg := t.Status().FPS; avg > float64(target)*(1+t.UncappedTol) {
+		return hi, fmt.Errorf("game runs at %.0f fps at %dW, set Steam's framerate limit to %d first", avg, hi, target)
 	}
 	if !ok {
 		t.update(func(s *Status) {
