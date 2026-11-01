@@ -9,7 +9,7 @@ import {
   staticClasses,
 } from "@decky/ui";
 import { callable, definePlugin, toaster } from "@decky/api";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FaBolt } from "react-icons/fa";
 
 type Resp<T> = { ok: boolean; error?: string; data?: T };
@@ -25,6 +25,8 @@ type Status = {
   low: number;
   jitter: number;
   result: number;
+  unreachable: boolean;
+  suggest: number;
   message: string;
 };
 
@@ -40,6 +42,7 @@ type GovStatus = {
   gpu: number;
   raises: number;
   drops: number;
+  maxed: boolean;
   message: string;
 };
 
@@ -92,6 +95,20 @@ function Content() {
 
   const st = data?.status;
   const tuning = st?.state == "tuning";
+  const unreachable = st?.state == "failed" && st.unreachable && st.appid == appid;
+  const warn = { color: "#ff6b6b", fontWeight: "bold" };
+
+  // the row is easy to miss, so shout once when it happens
+  const prevState = useRef(st?.state);
+  useEffect(() => {
+    if (prevState.current == "tuning" && unreachable && st) {
+      toaster.toast({
+        title: `${data?.max}W can't hit ${st.target} fps`,
+        body: `Best it managed was ${st.fps.toFixed(0)} fps`,
+      });
+    }
+    prevState.current = st?.state;
+  }, [st?.state]);
 
   const onTune = async () => {
     const r = tuning ? await stop() : await tune(appid, target);
@@ -168,7 +185,13 @@ function Content() {
         {govHere && (
           <PanelSectionRow>
             <Field
-              label={gov.message || `${gov.watts}W, floor ${gov.floor}W`}
+              label={
+                gov.maxed ? (
+                  <span style={warn}>{gov.watts}W isn't enough for {gov.target} fps here</span>
+                ) : (
+                  gov.message || `${gov.watts}W, floor ${gov.floor}W`
+                )
+              }
               description={`${gov.fps.toFixed(1)} fps${gov.gpu >= 0 ? `, gpu ${gov.gpu.toFixed(0)}%` : ""}, ${gov.raises} up / ${gov.drops} down`}
             />
           </PanelSectionRow>
@@ -178,7 +201,24 @@ function Content() {
             {tuning ? "Stop" : "Find lowest TDP"}
           </ButtonItem>
         </PanelSectionRow>
-        {st && st.state != "idle" && st.appid == appid && (
+        {unreachable && st && (
+          <>
+            <PanelSectionRow>
+              <Field
+                label={<span style={warn}>{data?.max}W can't hit {st.target} fps</span>}
+                description={`Even at max it only managed ${st.fps.toFixed(1)} fps (low ${st.low.toFixed(1)}). Nothing was saved.`}
+              />
+            </PanelSectionRow>
+            {st.suggest > 0 && (
+              <PanelSectionRow>
+                <ButtonItem layout="below" onClick={() => setTarget(st.suggest)}>
+                  Use {st.suggest} fps instead
+                </ButtonItem>
+              </PanelSectionRow>
+            )}
+          </>
+        )}
+        {st && st.state != "idle" && !unreachable && st.appid == appid && (
           <PanelSectionRow>
             <Field
               label={st.message}
