@@ -63,6 +63,9 @@ func (s *Server) handle(req Request) (any, error) {
 			"watts":    s.chargerWatts(),
 			"gpu_min":  0,
 			"gpu_max":  0,
+			"gpu_cap":  s.gpuCap(s.chargerWatts()),
+
+			"gpu_full_watts": GPUFullWatts,
 		}
 		s.mu.Unlock()
 		if s.gpu != nil {

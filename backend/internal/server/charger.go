@@ -53,6 +53,24 @@ func (s *Server) restoreGame() error {
 	return s.hw.Restore()
 }
 
+// under this the pinned clock gets scaled down with tdp, 1600MHz at 3W
+// just starves the cpu since they share the same budget
+const GPUFullWatts = 10
+
+func (s *Server) gpuCap(watts int) int {
+	if s.gpu == nil {
+		return 0
+	}
+	c := s.gpu.Max * watts / GPUFullWatts / 100 * 100
+	if c > s.gpu.Max {
+		c = s.gpu.Max
+	}
+	if c < s.gpu.Min {
+		c = s.gpu.Min
+	}
+	return c
+}
+
 func (s *Server) chargerWatts() int {
 	if s.set.Watts <= 0 {
 		return s.hw.Max
@@ -69,7 +87,12 @@ func (s *Server) boost() {
 	}
 
 	if s.gpu != nil && s.set.PinGPU {
-		if err := s.gpu.Pin(s.set.GPUClock); err != nil {
+		clk := s.set.GPUClock
+		limit := s.gpuCap(w)
+		if clk <= 0 || clk > limit {
+			clk = limit
+		}
+		if err := s.gpu.Pin(clk); err != nil {
 			log.Printf("charger: pin gpu: %v", err)
 		} else {
 			s.pinned = true
