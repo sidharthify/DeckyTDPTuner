@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/sidharthify/DeckyTDPTuner/backend/internal/gpu"
@@ -78,20 +79,28 @@ func main() {
 	srv := server.New(hw, gp, tn, gov, profiles.Load(*profPath), *setPath)
 	srv.DefaultMin = *minW
 
+	var once sync.Once
+	shutdown := func(code int) {
+		once.Do(func() {
+			log.Printf("exiting, putting tdp back to %dW", hw.Orig())
+			tn.Stop()
+			gov.Stop()
+			srv.Close()
+			mangohud.DisableLogging()
+			hw.Restore()
+			os.Remove(*sock)
+			os.Exit(code)
+		})
+	}
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sig
-		log.Printf("exiting, putting tdp back to %dW", hw.Orig())
-		tn.Stop()
-		gov.Stop()
-		srv.Close()
-		mangohud.DisableLogging()
-		hw.Restore()
-		os.Remove(*sock)
-		os.Exit(0)
+		shutdown(0)
 	}()
 
 	go srv.WatchCharger()
-	log.Fatal(srv.Serve(*sock))
+	log.Print(srv.Serve(*sock))
+	shutdown(1)
 }
