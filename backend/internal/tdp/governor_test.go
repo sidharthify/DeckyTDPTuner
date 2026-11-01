@@ -178,3 +178,36 @@ func TestGovJaggedDrop(t *testing.T) {
 		t.Fatalf("dropped again, hw %d", hw.Get())
 	}
 }
+
+// plugged in with full power off, or just unplugged. starts at 15W with a
+// tuned 5W and has to actually get there even though sampled jitter at lower
+// watts looks worse than at 15W
+func TestGovEasesDownToTuned(t *testing.T) {
+	g, hw, now := newGov(15, 5)
+
+	noisy := func(j float64) []mangohud.Sample {
+		out := make([]mangohud.Sample, 5)
+		for i := range out {
+			ft := 1000.0 / 60
+			if i%2 == 0 {
+				ft += j / 2
+			} else {
+				ft -= j / 2
+			}
+			out[i] = mangohud.Sample{FPS: 60, Frametime: ft, GPULoad: 50}
+		}
+		return out
+	}
+
+	for i := 0; i < 160; i++ {
+		now = now.Add(500 * time.Millisecond)
+		j := 2.0
+		if hw.Get() >= 14 {
+			j = 0.3
+		}
+		g.step(now, 60, noisy(j))
+	}
+	if hw.Get() != 5 || g.floor != 5 {
+		t.Fatalf("stuck at %dW floor %dW after 80s", hw.Get(), g.floor)
+	}
+}

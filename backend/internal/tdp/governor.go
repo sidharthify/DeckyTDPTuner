@@ -202,7 +202,12 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 	// fps can hold fine while the graph turns into a sawtooth, so once
 	// theres a full window at the new watts compare it with before the drop
 	jit := g.jitter()
-	if g.dropJit >= 0 && g.watts < g.dropFrom && len(g.hist) >= g.WinTicks && now.Sub(g.lastDrop) < g.Blame*2 {
+	// a tuned base was already checked for smoothness by the tuner and the
+	// floor never goes under it, so this only matters for untuned games. above
+	// it the sampled jitter is just noise and kept undoing the ease down after
+	// unplugging
+	tuned := g.base > g.Min
+	if !tuned && g.dropJit >= 0 && g.watts < g.dropFrom && len(g.hist) >= g.WinTicks && now.Sub(g.lastDrop) < g.Blame*2 {
 		worse := jit > g.dropJit*(1+g.JitterRise) && jit-g.dropJit > g.JitterMin
 		if worse {
 			g.floor = g.dropFrom
@@ -228,7 +233,12 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 	}
 
 	headroom := gpu < 0 || gpu < g.BusyMax
-	if headroom && g.watts > g.floor && len(g.hist) >= g.WinTicks && now.Sub(g.lastChange) >= g.LowerAfter && now.Sub(g.lastMiss) >= g.LowerAfter {
+	// above the tuned value is known safe, come down faster
+	wait := g.LowerAfter
+	if tuned && g.watts > g.base {
+		wait = g.LowerAfter / 3
+	}
+	if headroom && g.watts > g.floor && len(g.hist) >= g.WinTicks && now.Sub(g.lastChange) >= wait && now.Sub(g.lastMiss) >= wait {
 		g.dropFrom = g.watts
 		g.dropJit = jit
 		g.hist = nil
