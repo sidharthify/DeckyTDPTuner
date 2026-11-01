@@ -28,25 +28,44 @@ func (f *fakeHw) Get() int {
 	return f.w
 }
 
-type fakeSrc struct{ hw *fakeHw }
+type fakeSrc struct {
+	hw *fakeHw
+	// frame to frame swing in ms at a given watt
+	jit func(w int) float64
+}
 
 func (f *fakeSrc) Skip() {
 }
 func (f *fakeSrc) Read() []mangohud.Sample {
+	w := f.hw.Get()
 	fps := 60.0
-	if w := f.hw.Get(); w < 9 {
+	if w < 9 {
 		fps = float64(w) * 6
+	}
+	j := 0.0
+	if f.jit != nil {
+		j = f.jit(w)
 	}
 	out := make([]mangohud.Sample, 10)
 	for i := range out {
-		out[i] = mangohud.Sample{FPS: fps, Frametime: 1000 / fps}
+		ft := 1000 / fps
+		if i%2 == 0 {
+			ft += j / 2
+		} else {
+			ft -= j / 2
+		}
+		out[i] = mangohud.Sample{FPS: fps, Frametime: ft}
 	}
 	return out
 }
 
 func newFake() (*Tuner, *fakeHw) {
+	return newFakeJit(nil)
+}
+
+func newFakeJit(jit func(w int) float64) (*Tuner, *fakeHw) {
 	hw := &fakeHw{w: 15}
-	tn := NewTuner(hw, &fakeSrc{hw}, 3, 15)
+	tn := NewTuner(hw, &fakeSrc{hw: hw, jit: jit}, 3, 15)
 	tn.Settle = time.Millisecond
 	tn.Window = 20 * time.Millisecond
 	return tn, hw
@@ -80,6 +99,25 @@ func TestSearch(t *testing.T) {
 	}
 	if s.State != "done" || s.Result != 10 || w != 10 || hw.Get() != 10 {
 		t.Fatalf("status %+v, got %d, hw %d", s, w, hw.Get())
+	}
+}
+
+// passes at 9W but the graph only flattens out at 11W
+func TestSearchJagged(t *testing.T) {
+	tn, hw := newFakeJit(func(w int) float64 {
+		switch w {
+		case 9:
+			return 4
+		case 10:
+			return 2.5
+		}
+		return 0.5
+	})
+	tn.Start("123", 60, nil)
+
+	s := wait(tn)
+	if s.State != "done" || s.Result != 11 || hw.Get() != 11 {
+		t.Fatalf("status %+v, hw %d", s, hw.Get())
 	}
 }
 

@@ -30,6 +30,7 @@ type Status struct {
 	Hi      int     `json:"hi"`
 	FPS     float64 `json:"fps"`
 	Low     float64 `json:"low"`
+	Jitter  float64 `json:"jitter"`
 	Result  int     `json:"result"`
 	Message string  `json:"message"`
 }
@@ -48,6 +49,8 @@ type Tuner struct {
 	Window   time.Duration
 	Tol      float64 // how far under target avg fps can be
 	LowTol   float64 // same for the 5% lows
+	// how much smoother the next watt has to be before we take it
+	JitterGain float64
 
 	mu     sync.Mutex
 	st     Status
@@ -56,16 +59,17 @@ type Tuner struct {
 
 func NewTuner(hw capper, src frameSource, min, max int) *Tuner {
 	return &Tuner{
-		hw:       hw,
-		src:      src,
-		Min:      min,
-		Max:      max,
-		Headroom: 1,
-		Settle:   5 * time.Second,
-		Window:   10 * time.Second,
-		Tol:      0.03,
-		LowTol:   0.15,
-		st:       Status{State: "idle"},
+		hw:         hw,
+		src:        src,
+		Min:        min,
+		Max:        max,
+		Headroom:   1,
+		Settle:     5 * time.Second,
+		Window:     10 * time.Second,
+		Tol:        0.03,
+		LowTol:     0.15,
+		JitterGain: 0.25,
+		st:         Status{State: "idle"},
 	}
 }
 
@@ -108,13 +112,26 @@ func stats(s []mangohud.Sample) (float64, float64) {
 	return float64(len(s)) * 1000 / sum, 1000 / p95
 }
 
-func (t *Tuner) measure(ctx context.Context, watts, target int) (bool, error) {
+// jitter is the average jump between one frame and the next in ms, a flat
+// graph is ~0 and a sawtooth one is big even when avg fps looks fine
+func jitter(s []mangohud.Sample) float64 {
+	if len(s) < 2 {
+		return 0
+	}
+	sum := 0.0
+	for i := 1; i < len(s); i++ {
+		sum += math.Abs(s[i].Frametime - s[i-1].Frametime)
+	}
+	return sum / float64(len(s)-1)
+}
+
+func (t *Tuner) measure(ctx context.Context, watts, target int) (bool, float64, error) {
 	if err := t.hw.Set(watts); err != nil {
-		return false, err
+		return false, 0, err
 	}
 	if t.Prep != nil {
 		if err := t.Prep(); err != nil {
-			return false, err
+			return false, 0, err
 		}
 	}
 	t.update(func(s *Status) {
@@ -122,7 +139,7 @@ func (t *Tuner) measure(ctx context.Context, watts, target int) (bool, error) {
 	})
 
 	if err := sleepCtx(ctx, t.Settle); err != nil {
-		return false, err
+		return false, 0, err
 	}
 	t.src.Skip()
 
@@ -130,24 +147,26 @@ func (t *Tuner) measure(ctx context.Context, watts, target int) (bool, error) {
 	end := time.Now().Add(t.Window)
 	for time.Now().Before(end) {
 		if err := sleepCtx(ctx, t.Window/40); err != nil {
-			return false, err
+			return false, 0, err
 		}
 		samples = append(samples, t.src.Read()...)
 	}
 	samples = append(samples, t.src.Read()...)
 
 	if len(samples) < 20 {
-		return false, fmt.Errorf("only got %d frames, is the game running and logging on?", len(samples))
+		return false, 0, fmt.Errorf("only got %d frames, is the game running and logging on?", len(samples))
 	}
 
 	avg, low := stats(samples)
+	jit := jitter(samples)
 	t.update(func(s *Status) {
 		s.FPS = avg
 		s.Low = low
+		s.Jitter = jit
 	})
 
 	ok := avg >= float64(target)*(1-t.Tol) && low >= float64(target)*(1-t.LowTol)
-	return ok, nil
+	return ok, jit, nil
 }
 
 func (t *Tuner) search(ctx context.Context, target int) (int, error) {
@@ -156,7 +175,7 @@ func (t *Tuner) search(ctx context.Context, target int) (int, error) {
 		s.Lo, s.Hi = lo, hi
 	})
 
-	ok, err := t.measure(ctx, hi, target)
+	ok, _, err := t.measure(ctx, hi, target)
 	if err != nil {
 		return 0, err
 	}
@@ -167,7 +186,7 @@ func (t *Tuner) search(ctx context.Context, target int) (int, error) {
 	// smallest watts that still passes
 	for lo < hi {
 		mid := (lo + hi) / 2
-		ok, err := t.measure(ctx, mid, target)
+		ok, _, err := t.measure(ctx, mid, target)
 		if err != nil {
 			return 0, err
 		}
@@ -181,7 +200,32 @@ func (t *Tuner) search(ctx context.Context, target int) (int, error) {
 		})
 	}
 
-	res := hi + t.Headroom
+	// lowest passing watt can still have a jagged frametime graph, keep
+	// going up while the next one is clearly smoother
+	cur := hi
+	_, curJit, err := t.measure(ctx, cur, target)
+	if err != nil {
+		return 0, err
+	}
+	smoothed := false
+	for cur < t.Max {
+		_, nextJit, err := t.measure(ctx, cur+1, target)
+		if err != nil {
+			return 0, err
+		}
+		if nextJit >= curJit*(1-t.JitterGain) {
+			break
+		}
+		cur++
+		curJit = nextJit
+		smoothed = true
+	}
+
+	// already found the knee, no need to pad it
+	res := cur
+	if !smoothed {
+		res += t.Headroom
+	}
 	if res > t.Max {
 		res = t.Max
 	}
