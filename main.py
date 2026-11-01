@@ -31,16 +31,24 @@ class Plugin:
                 break
             await asyncio.sleep(0.1)
 
+    async def _send(self, req):
+        r, w = await asyncio.open_unix_connection(SOCK)
+        try:
+            w.write((json.dumps(req) + "\n").encode())
+            await w.drain()
+            return await r.readline()
+        finally:
+            w.close()
+
     async def _call(self, cmd, **kw):
         await self._spawn()
         req = dict(kw, cmd=cmd)
         try:
-            r, w = await asyncio.open_unix_connection(SOCK)
-            w.write((json.dumps(req) + "\n").encode())
-            await w.drain()
-            line = await r.readline()
-            w.close()
+            line = await asyncio.wait_for(self._send(req), 10)
             return json.loads(line)
+        except asyncio.TimeoutError:
+            decky.logger.error(f"{cmd} timed out")
+            return {"ok": False, "error": "backend not responding"}
         except Exception as e:
             decky.logger.error(f"{cmd} failed: {e}")
             return {"ok": False, "error": str(e)}
