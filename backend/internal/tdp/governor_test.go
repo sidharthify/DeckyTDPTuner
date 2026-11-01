@@ -134,3 +134,47 @@ func TestGovMaxed(t *testing.T) {
 		t.Fatal("still maxed after recovering")
 	}
 }
+
+// geometry dash case, fps holds fine at 5W but frametimes go all over the place
+func TestGovJaggedDrop(t *testing.T) {
+	g, hw, now := newGov(6, 3)
+
+	jagged := func(j float64) []mangohud.Sample {
+		out := make([]mangohud.Sample, 5)
+		for i := range out {
+			ft := 1000.0 / 60
+			if i%2 == 0 {
+				ft += j / 2
+			} else {
+				ft -= j / 2
+			}
+			out[i] = mangohud.Sample{FPS: 60, Frametime: ft, GPULoad: 40}
+		}
+		return out
+	}
+
+	for i := 0; i < 32; i++ {
+		now = now.Add(500 * time.Millisecond)
+		g.step(now, 60, jagged(0.3))
+	}
+	if hw.Get() != 5 {
+		t.Fatalf("expected drop to 5W, hw %d", hw.Get())
+	}
+
+	for i := 0; i < 4; i++ {
+		now = now.Add(500 * time.Millisecond)
+		g.step(now, 60, jagged(4))
+	}
+	if hw.Get() != 6 || g.floor != 6 {
+		t.Fatalf("should have gone back to 6W, hw %d floor %d", hw.Get(), g.floor)
+	}
+
+	// and stays there
+	for i := 0; i < 60; i++ {
+		now = now.Add(500 * time.Millisecond)
+		g.step(now, 60, jagged(0.3))
+	}
+	if hw.Get() != 6 {
+		t.Fatalf("dropped again, hw %d", hw.Get())
+	}
+}

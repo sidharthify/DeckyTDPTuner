@@ -5,6 +5,7 @@ import (
 
 	"context"
 	"log"
+	"math"
 	"sync"
 	"time"
 )
@@ -45,6 +46,8 @@ type Governor struct {
 	MissTol    float64 // fps under target*MissTol counts as a miss
 	WinTicks   int     // how many ticks of history a miss is judged on
 	BusyMax    float64 // gpu load under this counts as headroom
+	JitterRise float64 // a drop that makes jitter this much worse gets undone
+	JitterMin  float64 // ms, ignore rises smaller than this
 
 	mu     sync.Mutex
 	st     GovStatus
@@ -53,6 +56,7 @@ type Governor struct {
 
 	watts, base, floor int
 	dropFrom           int
+	dropJit            float64 // jitter right before the last drop, -1 once checked
 	lastChange         time.Time
 	lastDrop           time.Time
 	lastMiss           time.Time
@@ -63,6 +67,7 @@ type Governor struct {
 type tickStat struct {
 	fps float64
 	n   int
+	fts []float64
 }
 
 func NewGovernor(hw capper, src frameSource, min, max int) *Governor {
@@ -81,6 +86,8 @@ func NewGovernor(hw capper, src frameSource, min, max int) *Governor {
 		MissTol:    0.93,
 		WinTicks:   4,
 		BusyMax:    85,
+		JitterRise: 0.33,
+		JitterMin:  0.5,
 	}
 }
 
@@ -115,6 +122,7 @@ func (g *Governor) reset(now time.Time, start, base int) {
 	g.base, g.floor = base, base
 	g.lastChange, g.lastMiss, g.floorAt = now, now, now
 	g.lastDrop = time.Time{}
+	g.dropJit = -1
 	g.hist = nil
 	g.set(start)
 }
@@ -128,8 +136,10 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 	// whatever single frame landed there, so go by the fps column instead
 	fps, gpu := 0.0, 0.0
 	gpuN := 0
+	fts := make([]float64, 0, len(s))
 	for _, x := range s {
 		fps += x.FPS
+		fts = append(fts, x.Frametime)
 		if x.GPULoad >= 0 {
 			gpu += x.GPULoad
 			gpuN++
@@ -146,7 +156,7 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 	g.st.FPS, g.st.GPU = fps, gpu
 	g.mu.Unlock()
 
-	g.hist = append(g.hist, tickStat{fps: fps, n: len(s)})
+	g.hist = append(g.hist, tickStat{fps: fps, n: len(s), fts: fts})
 	if len(g.hist) > g.WinTicks {
 		g.hist = g.hist[1:]
 	}
@@ -182,10 +192,33 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 		g.lastChange = now
 		// judge the new watts on fresh frames only
 		g.hist = nil
+		g.dropJit = -1
 		g.mu.Lock()
 		g.st.Raises++
 		g.mu.Unlock()
 		return
+	}
+
+	// fps can hold fine while the graph turns into a sawtooth, so once
+	// theres a full window at the new watts compare it with before the drop
+	jit := g.jitter()
+	if g.dropJit >= 0 && g.watts < g.dropFrom && len(g.hist) >= g.WinTicks && now.Sub(g.lastDrop) < g.Blame*2 {
+		worse := jit > g.dropJit*(1+g.JitterRise) && jit-g.dropJit > g.JitterMin
+		if worse {
+			g.floor = g.dropFrom
+			g.floorAt = now
+			g.lastMiss = now
+			g.set(g.dropFrom)
+			g.lastChange = now
+			g.hist = nil
+			g.mu.Lock()
+			g.st.Raises++
+			g.mu.Unlock()
+		}
+		g.dropJit = -1
+		if worse {
+			return
+		}
 	}
 
 	// one heavy scene shouldnt pin the floor up for the rest of the session
@@ -195,8 +228,10 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 	}
 
 	headroom := gpu < 0 || gpu < g.BusyMax
-	if headroom && g.watts > g.floor && now.Sub(g.lastChange) >= g.LowerAfter && now.Sub(g.lastMiss) >= g.LowerAfter {
+	if headroom && g.watts > g.floor && len(g.hist) >= g.WinTicks && now.Sub(g.lastChange) >= g.LowerAfter && now.Sub(g.lastMiss) >= g.LowerAfter {
 		g.dropFrom = g.watts
+		g.dropJit = jit
+		g.hist = nil
 		g.set(g.watts - 1)
 		g.lastDrop = now
 		g.lastChange = now
@@ -204,6 +239,24 @@ func (g *Governor) step(now time.Time, target int, s []mangohud.Sample) {
 		g.st.Drops++
 		g.mu.Unlock()
 	}
+}
+
+// mean jump between consecutive logged frametimes over the window. at 100ms
+// logging these are samples not every frame, but the spread still goes up
+// when the graph gets jagged
+func (g *Governor) jitter() float64 {
+	var all []float64
+	for _, h := range g.hist {
+		all = append(all, h.fts...)
+	}
+	if len(all) < 2 {
+		return 0
+	}
+	sum := 0.0
+	for i := 1; i < len(all); i++ {
+		sum += math.Abs(all[i] - all[i-1])
+	}
+	return sum / float64(len(all)-1)
 }
 
 func (g *Governor) Start(appid string, target, start, base int) error {
