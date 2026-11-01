@@ -1,13 +1,13 @@
 import { PanelSection, PanelSectionRow, SliderField, ToggleField } from "@decky/ui";
 import { useState } from "react";
 import { check, setSettings } from "../backend";
-import { ChargerSettings, StatusData } from "../types";
+import { Settings, StatusData } from "../types";
 
 export function ChargerSection({ data }: { data: StatusData }) {
   const ch = data.charger;
 
   // local copy so sliders dont jump around while the 1s poll catches up
-  const [cs, setCs] = useState<ChargerSettings>(ch.settings);
+  const [cs, setCs] = useState<Settings>(ch.settings);
 
   const watts = cs.watts > 0 ? cs.watts : data.max;
 
@@ -18,15 +18,16 @@ export function ChargerSection({ data }: { data: StatusData }) {
   };
   const cap = gpuCap(watts);
 
-  const update = async (patch: Partial<ChargerSettings>) => {
+  const update = async (patch: Partial<Settings>) => {
     const next = { ...cs, ...patch };
     // dropping the tdp pulls the clock down with it
     const c = gpuCap(next.watts > 0 ? next.watts : data.max);
     if (next.gpu_clock > c) {
       next.gpu_clock = c;
+      patch.gpu_clock = c;
     }
     setCs(next);
-    check(await setSettings(next));
+    check(await setSettings(patch));
   };
 
   return (

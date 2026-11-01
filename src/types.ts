@@ -32,7 +32,7 @@ export type GovStatus = {
   message: string;
 };
 
-export type ChargerSettings = {
+export type Settings = {
   full_power: boolean;
   watts: number;
   gpu_clock: number;
@@ -42,7 +42,7 @@ export type ChargerSettings = {
 export type Charger = {
   ac: boolean;
   boosted: boolean;
-  settings: ChargerSettings;
+  settings: Settings;
   watts: number;
   gpu_min: number;
   gpu_max: number;
