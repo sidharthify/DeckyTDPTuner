@@ -54,6 +54,9 @@ class Plugin:
     async def apply(self, appid: str):
         return await self._call("apply", appid=str(appid))
 
+    async def live(self, appid: str, target: int, on: bool):
+        return await self._call("live", appid=str(appid), target=int(target), on=bool(on))
+
     async def reset(self):
         return await self._call("reset")
 
