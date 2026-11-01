@@ -46,9 +46,26 @@ type GovStatus = {
   message: string;
 };
 
+type ChargerSettings = {
+  full_power: boolean;
+  watts: number;
+  gpu_clock: number;
+  pin_gpu: boolean;
+};
+
+type Charger = {
+  ac: boolean;
+  boosted: boolean;
+  settings: ChargerSettings;
+  watts: number;
+  gpu_min: number;
+  gpu_max: number;
+};
+
 type StatusData = {
   status: Status;
   governor: GovStatus;
+  charger: Charger;
   min: number;
   max: number;
   profile?: Profile;
@@ -60,6 +77,7 @@ const stop = callable<[], Resp<null>>("stop");
 const forget = callable<[appid: string], Resp<null>>("forget");
 const apply = callable<[appid: string], Resp<Profile | null>>("apply");
 const reset = callable<[], Resp<null>>("reset");
+const setSettings = callable<[settings: ChargerSettings], Resp<null>>("set_settings");
 const live = callable<[appid: string, target: number, on: boolean], Resp<Profile>>("live");
 
 function Content() {
@@ -127,6 +145,27 @@ function Content() {
       toaster.toast({ title: "TDP Tuner", body: r.error ?? "failed" });
     }
     refresh();
+  };
+
+  // local copy so sliders dont jump around while the 1s poll catches up
+  const [cs, setCs] = useState<ChargerSettings>();
+  useEffect(() => {
+    if (!cs && data?.charger) {
+      setCs(data.charger.settings);
+    }
+  }, [data?.charger]);
+
+  const ch = data?.charger;
+  const updateCharger = async (patch: Partial<ChargerSettings>) => {
+    if (!cs) {
+      return;
+    }
+    const next = { ...cs, ...patch };
+    setCs(next);
+    const r = await setSettings(next);
+    if (!r.ok) {
+      toaster.toast({ title: "TDP Tuner", body: r.error ?? "failed" });
+    }
   };
 
   const onForget = async () => {
@@ -238,6 +277,58 @@ function Content() {
           </PanelSectionRow>
         )}
       </PanelSection>
+
+      {ch && cs && (
+        <PanelSection title="On charger">
+          <PanelSectionRow>
+            <ToggleField
+              label="Full power on charger"
+              description={ch.boosted ? `Plugged in, running at ${ch.watts}W` : ch.ac ? "Plugged in" : "On battery"}
+              checked={cs.full_power}
+              onChange={(v) => updateCharger({ full_power: v })}
+            />
+          </PanelSectionRow>
+          {cs.full_power && (
+            <>
+              <PanelSectionRow>
+                <SliderField
+                  label="TDP on charger"
+                  value={cs.watts > 0 ? cs.watts : data!.max}
+                  min={data!.min}
+                  max={data!.max}
+                  step={1}
+                  showValue
+                  valueSuffix="W"
+                  onChange={(v) => updateCharger({ watts: v })}
+                />
+              </PanelSectionRow>
+              {ch.gpu_max > 0 && (
+                <PanelSectionRow>
+                  <ToggleField
+                    label="Pin GPU clock"
+                    checked={cs.pin_gpu}
+                    onChange={(v) => updateCharger({ pin_gpu: v })}
+                  />
+                </PanelSectionRow>
+              )}
+              {ch.gpu_max > 0 && cs.pin_gpu && (
+                <PanelSectionRow>
+                  <SliderField
+                    label="GPU clock"
+                    value={cs.gpu_clock > 0 ? cs.gpu_clock : ch.gpu_max}
+                    min={ch.gpu_min}
+                    max={ch.gpu_max}
+                    step={100}
+                    showValue
+                    valueSuffix="MHz"
+                    onChange={(v) => updateCharger({ gpu_clock: v })}
+                  />
+                </PanelSectionRow>
+              )}
+            </>
+          )}
+        </PanelSection>
+      )}
     </>
   );
 }
