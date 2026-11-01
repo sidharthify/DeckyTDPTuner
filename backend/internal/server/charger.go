@@ -45,7 +45,13 @@ func (s *Server) restoreGame() error {
 		return s.hw.Restore()
 	}
 	if pr.Live {
-		return s.govern(s.running, pr)
+		// start from where the charger had it and let it come down on its own,
+		// jumping straight to tuned watts in a heavy area is a nasty stutter
+		start := s.chargerWatts()
+		if start < pr.Watts {
+			start = pr.Watts
+		}
+		return s.gov.Start(s.running, pr.Target, start, pr.Watts)
 	}
 	if pr.Watts > 0 {
 		return s.hw.Set(pr.Watts)
