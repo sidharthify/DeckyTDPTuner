@@ -27,7 +27,12 @@ func TestGPUCap(t *testing.T) {
 func fakeHw(t *testing.T, watts int) *hwmon.Hwmon {
 	d := t.TempDir()
 	os.WriteFile(filepath.Join(d, "power1_cap"), []byte(strconv.Itoa(watts*1000000)), 0644)
-	return &hwmon.Hwmon{Dir: d, Min: 4, Max: 15}
+	hw, err := hwmon.Open(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hw.Min, hw.Max = 4, 15
+	return hw
 }
 
 func waitWatts(hw *hwmon.Hwmon, want int) int {
@@ -126,5 +131,28 @@ func TestLiveOffKeepsFloor(t *testing.T) {
 	}
 	if hw.Get() != 7 {
 		t.Fatalf("live off went to %dW, wanted the 7W floor", hw.Get())
+	}
+}
+
+func TestForgetRestores(t *testing.T) {
+	hw := fakeHw(t, 15)
+	gov := tdp.NewGovernor(hw, noFrames{}, 4, 15)
+	pr := profiles.Load(filepath.Join(t.TempDir(), "profiles.json"))
+	pr.Set("123", 5, 60)
+
+	s := &Server{hw: hw, gov: gov, profiles: pr, tuner: tdp.NewTuner(hw, noFrames{}, 4, 15)}
+	s.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	s.DefaultMin = 4
+
+	s.handle(Request{Cmd: "apply", AppID: "123"})
+	if hw.Get() != 5 {
+		t.Fatalf("apply didnt set 5W, hw %d", hw.Get())
+	}
+
+	if _, err := s.handle(Request{Cmd: "forget", AppID: "123"}); err != nil {
+		t.Fatal(err)
+	}
+	if hw.Get() != 15 {
+		t.Fatalf("forget left it at %dW", hw.Get())
 	}
 }

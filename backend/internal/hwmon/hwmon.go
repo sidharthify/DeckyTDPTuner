@@ -41,26 +41,33 @@ func Find() (*Hwmon, error) {
 		if err != nil || strings.TrimSpace(string(name)) != "amdgpu" {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(d, "power1_cap")); err != nil {
-			continue
+		if h, err := Open(d); err == nil {
+			return h, nil
 		}
-
-		h := &Hwmon{Dir: d, Min: 3, Max: 15}
-		if v, err := readInt(filepath.Join(d, "power1_cap_min")); err == nil && v > 0 {
-			h.Min = v / uw
-		}
-		if v, err := readInt(filepath.Join(d, "power1_cap_max")); err == nil && v > 0 {
-			h.Max = v / uw
-		}
-
-		h.orig1, _ = readInt(filepath.Join(d, "power1_cap"))
-		if v, err := readInt(filepath.Join(d, "power2_cap")); err == nil {
-			h.Fast = true
-			h.orig2 = v
-		}
-		return h, nil
 	}
 	return nil, fmt.Errorf("no amdgpu hwmon with power1_cap")
+}
+
+// Open uses d as is, whatever the cap is right now counts as the original
+func Open(d string) (*Hwmon, error) {
+	if _, err := os.Stat(filepath.Join(d, "power1_cap")); err != nil {
+		return nil, err
+	}
+
+	h := &Hwmon{Dir: d, Min: 3, Max: 15}
+	if v, err := readInt(filepath.Join(d, "power1_cap_min")); err == nil && v > 0 {
+		h.Min = v / uw
+	}
+	if v, err := readInt(filepath.Join(d, "power1_cap_max")); err == nil && v > 0 {
+		h.Max = v / uw
+	}
+
+	h.orig1, _ = readInt(filepath.Join(d, "power1_cap"))
+	if v, err := readInt(filepath.Join(d, "power2_cap")); err == nil {
+		h.Fast = true
+		h.orig2 = v
+	}
+	return h, nil
 }
 
 func (h *Hwmon) Get() int {

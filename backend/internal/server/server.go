@@ -211,7 +211,17 @@ func (s *Server) handle(req Request) (any, error) {
 		if s.gov.Status().AppID == req.AppID {
 			s.gov.Stop()
 		}
-		return nil, s.profiles.Delete(req.AppID)
+		if err := s.profiles.Delete(req.AppID); err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		// nothing saved anymore, so the running game goes back to stock
+		if s.running == req.AppID && !s.boosted && !s.tuning() {
+			s.cancelRamp()
+			return nil, s.hw.Restore()
+		}
+		return nil, nil
 
 	case "profiles":
 		return s.profiles.All(), nil
