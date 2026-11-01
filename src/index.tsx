@@ -23,6 +23,7 @@ type Status = {
   hi: number;
   fps: number;
   low: number;
+  jitter: number;
   result: number;
   message: string;
 };
@@ -183,7 +184,7 @@ function Content() {
               label={st.message}
               description={
                 tuning
-                  ? `${st.lo}-${st.hi}W left, last ${st.fps.toFixed(1)} fps (low ${st.low.toFixed(1)})`
+                  ? `${st.lo}-${st.hi}W left, last ${st.fps.toFixed(1)} fps (low ${st.low.toFixed(1)}, jitter ${st.jitter.toFixed(2)}ms)`
                   : undefined
               }
             />
