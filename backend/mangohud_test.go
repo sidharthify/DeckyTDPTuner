@@ -38,3 +38,10 @@ func TestLogTail(t *testing.T) {
 		t.Fatalf("expected nothing, got %+v", s)
 	}
 }
+
+func TestStripBlock(t *testing.T) {
+	in := "fps\nframe_timing\n# tdptuner\noutput_folder=/tmp/x\nautostart_log=1\nlog_interval=0\n"
+	if got := stripBlock(in); got != "fps\nframe_timing\n" {
+		t.Fatalf("got %q", got)
+	}
+}
