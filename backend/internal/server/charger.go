@@ -213,15 +213,15 @@ func (s *Server) checkCharger() {
 func (s *Server) SetSettings(patch json.RawMessage) error {
 	s.mu.Lock()
 	n := s.set
-	s.mu.Unlock()
 	if err := json.Unmarshal(patch, &n); err != nil {
+		s.mu.Unlock()
 		return err
 	}
 	if n.Watts < 0 || n.GPUClock < 0 || n.MinWatts < 0 {
+		s.mu.Unlock()
 		return fmt.Errorf("watts, gpu_clock and min_watts cant be negative")
 	}
 
-	s.mu.Lock()
 	s.set = n
 	err := s.saveSettings()
 	if s.boosted && s.set.FullPower {
